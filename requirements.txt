@@ -5,3 +5,6 @@ numpy
 pandas
 pytz
 gunicorn
+Flask==2.3.2
+fyers-apiv3==3.0.6
+yfinance==0.2.18
