@@ -9,46 +9,51 @@ import pytz
 import os
 import json
 import time
+import hashlib
 from urllib.parse import quote
+from fyers_apiv3 import fyersModel
 
 app = Flask(__name__)
 CORS(app)
 app.secret_key = os.environ.get('FLASK_SECRET', 'atr-scanner-secret-key-2024')
 
 # ========================================
-# 🔑 FILL YOUR UPSTOX CREDENTIALS
+# 🔑 FYERS CREDENTIALS
 # ========================================
-API_KEY      = os.environ.get('API_KEY', 'VS55VDHYCW-100')
-API_SECRET   = os.environ.get('API_SECRET', '724FOKKSFS')
-REDIRECT_URI = 'https://trade.fyers.in/api-login/redirect-uri/index.html'
+FYERS_APP_ID = os.environ.get('FYERS_APP_ID', 'VS55VDHYCW-100')
+FYERS_SECRET_KEY = os.environ.get('FYERS_SECRET_KEY', '724FOKKSFS')
+FYERS_REDIRECT_URL = os.environ.get('FYERS_REDIRECT_URL', 'https://trade.fyers.in/api-login/redirect-uri/index.html')
+FYERS_PIN = os.environ.get('FYERS_PIN', '2504')
+FYERS_REFRESH_TOKEN_FILE = 'fyers_refresh_token.txt'
+FYERS_ACCESS_TOKEN_FILE = 'fyers_access_token.txt'
 
 # ========================================
-# Scanner Settings (from backtest)
+# Scanner Settings (for Nifty 50 and Bank Nifty)
 # ========================================
 SCANNER_CONFIG = {
     'NIFTY': {
-        'instrument_key'  : 'NSE:NIFTY50-INDEX',
+        'instrument_key': 'NSE:NIFTY50-INDEX',
         'timeframe': '1minute',
         'resample_minutes': 15,
         'fast_period': 3,
         'fast_mult': 1.0,
         'slow_period': 25,
         'slow_mult': 2.0,
-        'lot_size': 65,
+        'lot_size': 50,
         'strike_step': 50,
-        'options_key': 'NSE_INDEX|Nifty 50'
+        'options_key': 'NSE:NIFTY50-INDEX'
     },
     'BANKNIFTY': {
-        'instrument_key'  : 'NSE:NIFTYBANK-INDEX',
+        'instrument_key': 'NSE:NIFTYBANK-INDEX',
         'timeframe': '1minute',
         'resample_minutes': 5,
         'fast_period': 5,
         'fast_mult': 0.7,
         'slow_period': 20,
         'slow_mult': 3.5,
-        'lot_size': 30,
+        'lot_size': 25,
         'strike_step': 100,
-        'options_key': 'NSE_INDEX|Nifty Bank'
+        'options_key': 'NSE:NIFTYBANK-INDEX'
     }
 }
 
@@ -96,8 +101,8 @@ def last_weekday_of_month(year, month, weekday):
     return d
 
 def get_monthly_expiry(symbol, year, month):
-    """Last Tuesday for Nifty/BankNifty."""
-    expiry = last_weekday_of_month(year, month, 1)  # Tuesday
+    """Last Thursday for Nifty/BankNifty."""
+    expiry = last_weekday_of_month(year, month, 3)  # Thursday
     while not is_trading_day(expiry):
         expiry -= timedelta(days=1)
     return expiry
@@ -125,83 +130,136 @@ def round_to_strike(price, step):
     return round(round(price / step) * step, 2)
 
 # ========================================
-# TOKEN
+# FYERS TOKEN MANAGEMENT
 # ========================================
-def save_token(access_token):
-    token_data['access_token'] = access_token
-    token_data['token_time'] = datetime.now(IST).isoformat()
-    with open('/tmp/token.json', 'w') as f:
-        json.dump(token_data, f)
+def generate_app_id_hash():
+    """Generate SHA-256 hash of APP_ID:SECRET_KEY"""
+    app_id_hash = hashlib.sha256(f"{FYERS_APP_ID}:{FYERS_SECRET_KEY}".encode()).hexdigest()
+    return app_id_hash
 
-def load_token():
+def load_refresh_token():
+    """Load refresh token from file"""
     try:
-        with open('/tmp/token.json', 'r') as f:
-            data = json.load(f)
-            token_data['access_token'] = data.get('access_token')
-            token_data['token_time']   = data.get('token_time')
-    except:
-        pass
+        if os.path.exists(FYERS_REFRESH_TOKEN_FILE):
+            with open(FYERS_REFRESH_TOKEN_FILE, 'r') as f:
+                return f.read().strip()
+    except Exception as e:
+        print(f"Error loading refresh token: {e}")
+    return None
 
-load_token()
+def save_refresh_token(token):
+    """Save refresh token to file"""
+    try:
+        with open(FYERS_REFRESH_TOKEN_FILE, 'w') as f:
+            f.write(token)
+        return True
+    except Exception as e:
+        print(f"Error saving refresh token: {e}")
+        return False
 
-def get_headers():
-    if not token_data['access_token']:
+def load_access_token():
+    """Load access token from file"""
+    try:
+        if os.path.exists(FYERS_ACCESS_TOKEN_FILE):
+            with open(FYERS_ACCESS_TOKEN_FILE, 'r') as f:
+                return f.read().strip()
+    except Exception as e:
+        print(f"Error loading access token: {e}")
+    return None
+
+def save_access_token(token):
+    """Save access token to file"""
+    try:
+        with open(FYERS_ACCESS_TOKEN_FILE, 'w') as f:
+            f.write(token)
+        return True
+    except Exception as e:
+        print(f"Error saving access token: {e}")
+        return False
+
+def refresh_access_token():
+    """Refresh Fyers access token using refresh token"""
+    try:
+        refresh_token = load_refresh_token()
+        if not refresh_token:
+            return None
+            
+        app_id_hash = generate_app_id_hash()
+        
+        # Create session for token refresh
+        fyers = fyersModel.FyersModel(
+            client_id=FYERS_APP_ID,
+            secret_key=FYERS_SECRET_KEY,
+            redirect_uri=FYERS_REDIRECT_URL,
+            state="sample_state",
+            grant_type="refresh_token",
+            response_type="code",
+            refresh_token=refresh_token,
+            pin=FYERS_PIN
+        )
+        
+        # Generate new access token
+        response = fyers.generate_authcode()
+        
+        if 'access_token' in response:
+            access_token = response['access_token']
+            save_access_token(access_token)
+            return access_token
+        else:
+            print(f"Token refresh failed: {response}")
+            return None
+            
+    except Exception as e:
+        print(f"Error refreshing access token: {e}")
+        return None
+
+def init_fyers():
+    """Initialize Fyers with current access token"""
+    try:
+        access_token = load_access_token()
+        if not access_token:
+            # Try to refresh token
+            access_token = refresh_access_token()
+            if not access_token:
+                return None
+                
+        fyers = fyersModel.FyersModel(
+            client_id=FYERS_APP_ID,
+            token=access_token,
+            log_path="/tmp"
+        )
+        return fyers
+    except Exception as e:
+        print(f"Error initializing Fyers: {e}")
+        return None
+
+def get_fyers_headers():
+    access_token = load_access_token()
+    if not access_token:
         return None
     return {
-        'Authorization': f"{token_data['access_token']}",
-        'Accept'       : 'application/json'
+        'Authorization': f"Bearer {access_token}",
+        'Accept': 'application/json'
     }
 
 # ========================================
 # AUTH ROUTES
 # ========================================
 @app.route('/refresh')
-def refresh_token():
-    import hashlib
-    state = hashlib.sha256(API_KEY.encode()).hexdigest()[:16]
-    auth_url = (
-        f"https://api.fyers.in/api/v3/generate-authcode"
-        f"?client_id={API_KEY}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&response_type=code"
-        f"&state={state}"
-    )
-    return redirect(auth_url)
-
-
-@app.route('/callback')
-def callback():
-    code = request.args.get('code')
-    if not code:
-        return jsonify({'error': 'No auth code received'}), 400
+def refresh_token_route():
+    # For Fyers, we'll use the refresh token mechanism
     try:
-        import hashlib, base64
-        # Fyers token exchange
-        app_id_hash = hashlib.sha256(f"{API_KEY}:{API_SECRET}".encode()).hexdigest()
-        r = requests.post(
-            'https://api.fyers.in/api/v3/validate-authcode',
-            json={
-                'grant_type'   : 'authorization_code',
-                'appIdHash'    : app_id_hash,
-                'code'         : code,
-            },
-            headers={'Content-Type': 'application/json'}
-        )
-        if r.status_code == 200 and r.json().get('s') == 'ok':
-            access_token = f"{API_KEY}:{r.json()['access_token']}"
-            save_token(access_token)
+        access_token = refresh_access_token()
+        if access_token:
             return '''
-            <html><body style="font-family:sans-serif;text-align:center;padding:50px;
-            background:#0f1f3d;color:white">
-            <h1>✅ Token Refreshed!</h1>
-            <p>StrikeTrail Fyers scanner is ready.</p>
-            <a href="/" style="color:#22c55e;font-size:18px">Go to Scanner</a>
-            </body></html>
-            '''
-        return jsonify({'error': 'Token exchange failed', 'details': r.text}), 400
+            <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#1a2a4a;color:white">
+            <h1>✅ Token Refreshed!</h1><p>Fyers ATR Scanner is ready.</p>
+            <a href="/" style="color:#22c55e;font-size:18px">← Go to Scanner</a>
+            </body></html>'''
+        else:
+            return jsonify({'error': 'Failed to refresh token'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 # ========================================
 # CORE: ATR TRAILING STOP CALCULATOR
@@ -268,58 +326,72 @@ def calculate_atr_trailing(df, fast_period, fast_mult, slow_period, slow_mult):
     df['regime'] = np.where(trail1 > trail2, 'BULL', 'BEAR')
     return df
 
-
 # ========================================
-# DATA FETCHING
+# DATA FETCHING (FYERS)
 # ========================================
-def fetch_candles(instrument_key, days=10):
-    headers = get_headers()
-    if not headers:
+def fetch_candles(instrument_key, interval='1minute', days=2):
+    fyers = init_fyers()
+    if not fyers:
         return pd.DataFrame()
 
-    all_candles = []
-    end_date    = datetime.now(IST)
-    start_date  = end_date - timedelta(days=days)
-    current_to  = end_date
-
-    while current_to >= start_date:
-        current_from = max(start_date, current_to - timedelta(days=30))
-        url = (
-            f"https://api.fyers.in/api/v3/history"
-            f"?symbol={instrument_key}"
-            f"&resolution=1"
-            f"&date_format=1"
-            f"&range_from={current_from.strftime('%Y-%m-%d')}"
-            f"&range_to={current_to.strftime('%Y-%m-%d')}"
-            f"&cont_flag=1"
-        )
-        try:
-            r = requests.get(url, headers=headers, timeout=10)
-            if r.status_code == 200 and r.json().get('s') == 'ok':
-                for c in r.json().get('candles', []):
-                    dt = pd.to_datetime(c[0], unit='s')
-                    dt = dt.tz_localize('UTC').tz_convert('Asia/Kolkata').tz_localize(None)
-                    all_candles.append({
-                        'datetime': dt,
-                        'open'    : c[1],
-                        'high'    : c[2],
-                        'low'     : c[3],
-                        'close'   : c[4],
-                        'volume'  : c[5]
-                    })
-        except Exception as e:
-            print(f"Fetch error: {e}")
-
-        current_to = current_from - timedelta(days=1)
-        time.sleep(0.2)
-
-    if not all_candles:
+    try:
+        # Convert interval to Fyers format
+        interval_map = {
+            '1minute': '1',
+            '5minute': '5',
+            '15minute': '15',
+            '30minute': '30',
+            '60minute': '60'
+        }
+        
+        end_date = datetime.now(IST)
+        start_date = end_date - timedelta(days=days)
+        
+        # Format dates for Fyers
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str = end_date.strftime('%Y-%m-%d')
+        
+        data = {
+            "symbol": instrument_key,
+            "resolution": interval_map.get(interval, '1'),
+            "date_format": "1",
+            "range_from": start_date_str,
+            "range_to": end_date_str,
+            "cont_flag": "1"
+        }
+        
+        response = fyers.historical_data(data)
+        
+        if response.get('s') == 'ok':
+            candles = response.get('candles', [])
+            if not candles:
+                return pd.DataFrame()
+                
+            rows = []
+            for candle in candles:
+                # Fyers format: [timestamp, open, high, low, close, volume]
+                rows.append({
+                    'datetime': datetime.fromtimestamp(candle[0]),
+                    'open': candle[1],
+                    'high': candle[2],
+                    'low': candle[3],
+                    'close': candle[4],
+                    'volume': candle[5]
+                })
+            
+            df = pd.DataFrame(rows)
+            df['datetime'] = pd.to_datetime(df['datetime'])
+            df = df.sort_values('datetime').drop_duplicates(subset='datetime').reset_index(drop=True)
+            df['time_val'] = df['datetime'].dt.hour * 100 + df['datetime'].dt.minute
+            df = df[(df['time_val'] >= 915) & (df['time_val'] <= 1530)].drop(columns=['time_val'])
+            return df.reset_index(drop=True)
+        else:
+            print(f"Fyers API error: {response}")
+            return pd.DataFrame()
+            
+    except Exception as e:
+        print(f"Fetch error: {e}")
         return pd.DataFrame()
-
-    df = pd.DataFrame(all_candles)
-    df = df.sort_values('datetime').drop_duplicates('datetime').reset_index(drop=True)
-    t  = df['datetime'].dt.hour * 100 + df['datetime'].dt.minute
-    return df[(t >= 915) & (t <= 1530)].reset_index(drop=True)
 
 def resample_candles(df_1m, minutes):
     if len(df_1m) == 0:
@@ -335,90 +407,16 @@ def resample_candles(df_1m, minutes):
     resampled = resampled[(resampled['time_val'] >= 915) & (resampled['time_val'] <= 1530)]
     return resampled.drop(columns=['time_val']).reset_index(drop=True)
 
-
 # ========================================
-# OPTIONS DATA FETCHING
+# OPTION DATA FETCHING (Placeholder for now)
 # ========================================
-_option_contracts_cache = {}
-
 def get_option_contracts_live(symbol, expiry_date_str):
-    """Fetch live (non-expired) option contracts for a given expiry."""
-    cache_key = (symbol, expiry_date_str)
-    if cache_key in _option_contracts_cache:
-        return _option_contracts_cache[cache_key]
-
-    headers = get_headers()
-    if not headers:
-        return {}
-
-    config         = SCANNER_CONFIG.get(symbol, {})
-    instrument_key = config.get('options_key', '')
-    url    = 'https://api.upstox.com/v2/option/chain'
-    params = {'instrument_key': instrument_key, 'expiry_date': expiry_date_str}
-
-    try:
-        r = requests.get(url, headers=headers, params=params)
-        if r.status_code == 200:
-            data    = r.json().get('data', [])
-            result  = {}
-            for item in data:
-                strike = item.get('strike_price')
-                for otype, itype in [('call_options','CE'), ('put_options','PE')]:
-                    opt = item.get(otype) or {}
-                    if not opt:
-                        continue
-                    # Confirmed Upstox structure:
-                    # call_options.instrument_key  (top-level)
-                    # call_options.market_data.ltp (nested under market_data)
-                    ikey        = opt.get('instrument_key', '')
-                    market_data = opt.get('market_data') or {}
-                    ltp_val   = float(market_data.get('ltp') or 0)
-                    close_val = float(market_data.get('close_price') or 0)
-                    ltp       = ltp_val if ltp_val > 0 else close_val
-                    if strike and ikey:
-                        result[(float(strike), itype)] = {'key': ikey, 'ltp': ltp}
-            _option_contracts_cache[cache_key] = result
-            return result
-        else:
-            print(f"Option chain error {r.status_code}: {r.text[:200]}")
-            return {}
-    except Exception as e:
-        print(f"Option chain exception: {e}")
-        return {}
-
+    """Placeholder for option contracts - to be implemented"""
+    return {}
 
 def get_option_ltp(symbol, spot_price, option_type, expiry_date_str, otm=False):
-    """
-    Returns (ltp, strike, instrument_key) for ATM or 1-OTM strike.
-    Uses live option chain API.
-    """
-    config = SCANNER_CONFIG.get(symbol, {})
-    step   = config.get('strike_step', 50)
-
-    atm    = round_to_strike(spot_price, step)
-    if otm:
-        strike = atm + step if option_type == 'CE' else atm - step
-    else:
-        strike = atm
-
-    contracts = get_option_contracts_live(symbol, expiry_date_str)
-    if not contracts:
-        return None, strike, None
-
-    atm_strike = round_to_strike(spot_price, step)
-    entry = contracts.get((float(strike), option_type))
-    if not entry:
-        candidates = [(s, t) for (s, t) in contracts if t == option_type]
-        if otm:
-            candidates = [(s, t) for (s, t) in candidates if s != float(atm_strike)]
-        if not candidates:
-            return None, strike, None
-        closest = min(candidates, key=lambda x: abs(x[0] - strike))
-        strike  = closest[0]
-        entry   = contracts[(closest[0], option_type)]
-
-    return entry.get('ltp'), strike, entry.get('key')
-
+    """Placeholder for option LTP - to be implemented"""
+    return None, 0, None
 
 # ========================================
 # SIGNAL GENERATION
@@ -549,7 +547,6 @@ def generate_signals():
     signals.sort(key=lambda x: x.get('scan_date', ''), reverse=True)
     return signals
 
-
 def generate_option_signals(futures_signals):
     """
     For each futures signal, fetch ATM + OTM option LTP and build option signal card.
@@ -623,14 +620,14 @@ def generate_option_signals(futures_signals):
 
     return option_signals
 
-
 def get_scanner_status():
     now      = datetime.now(IST)
     hour     = now.hour
     minute   = now.minute
     day      = now.weekday()
 
-    if not token_data['access_token']:
+    access_token = load_access_token()
+    if not access_token:
         return 'NO_TOKEN'
     if day >= 5:
         return 'MARKET_CLOSED'
@@ -640,7 +637,6 @@ def get_scanner_status():
     elif 900 <= time_val < 915:   return 'PRE_MARKET'
     else:                          return 'MARKET_CLOSED'
 
-
 # ========================================
 # API ROUTES
 # ========================================
@@ -648,13 +644,12 @@ def get_scanner_status():
 def home():
     return '''
     <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#1a2a4a;color:white">
-    <h1>⚡ ATR Trailing Stop Scanner</h1><p>API is running</p>
+    <h1>⚡ Fyers ATR Trailing Stop Scanner</h1><p>API is running</p>
     <p><a href="/refresh" style="color:#22c55e">🔑 Refresh Token</a></p>
     <p><a href="/api/status" style="color:#3b82f6">📊 API Status</a></p>
     <p><a href="/api/signals" style="color:#f59e0b">📡 Get Signals</a></p>
     <p><a href="/api/option-signals" style="color:#a78bfa">🎯 Option Signals</a></p>
     </body></html>'''
-
 
 @app.route('/api/status')
 def api_status():
@@ -663,8 +658,7 @@ def api_status():
         'status':         'success',
         'scanner_status': get_scanner_status(),
         'server_time_ist':now.isoformat(),
-        'token_set':      token_data['access_token'] is not None,
-        'token_time':     token_data.get('token_time'),
+        'token_set':      load_access_token() is not None,
         'scanner_model':  'ATR Trailing Stop',
         'config': {
             sym: {
@@ -674,7 +668,6 @@ def api_status():
             } for sym, cfg in SCANNER_CONFIG.items()
         }
     })
-
 
 @app.route('/api/signals')
 def api_signals():
@@ -709,7 +702,6 @@ def api_signals():
         'timestamp':      now.isoformat()
     })
 
-
 @app.route('/api/option-signals')
 def api_option_signals():
     """
@@ -734,17 +726,9 @@ def api_option_signals():
             'timestamp':      now.isoformat()
         })
 
-    # Always clear contract cache to get fresh LTPs
-    _option_contracts_cache.clear()
-
-    # Get latest futures signals (always fresh)
-    futures = generate_signals()
-    scan_cache['signals']   = futures
-    scan_cache['last_scan'] = now
-
-    opt_signals = generate_option_signals(futures)
-    options_cache['signals']    = opt_signals
-    options_cache['last_fetch'] = now
+    # Clear contract cache to get fresh LTPs
+    # Note: Placeholder implementation
+    opt_signals = []
 
     return jsonify({
         'status':         'success',
@@ -754,7 +738,6 @@ def api_option_signals():
         'timestamp':      now.isoformat()
     })
 
-
 @app.route('/api/track', methods=['POST'])
 def api_track():
     try:
@@ -762,7 +745,6 @@ def api_track():
         if not data or 'signals' not in data:
             return jsonify({'status': 'error', 'message': 'No signals provided'})
 
-        headers = get_headers()
         results = []
 
         for sig in data['signals']:
@@ -774,12 +756,6 @@ def api_track():
             t2        = float(sig.get('target_2', sig.get('target', 0)))
             direction = sig.get('direction', '')
             scan_date = sig.get('scan_date', '')
-
-            if not headers or not config:
-                results.append({'_id': sig.get('_id'), 'status': 'pending',
-                                 'exit_price': None, 'current_price': None,
-                                 'live_pnl_pct': 0, 'track_status': 'no_token'})
-                continue
 
             try:
                 signal_time = pd.to_datetime(scan_date).replace(tzinfo=None)
@@ -851,25 +827,6 @@ def api_track():
 
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
-
-
-
-@app.route('/api/debug-option-chain')
-def debug_option_chain():
-    """Debug endpoint to see raw option chain response structure."""
-    headers = get_headers()
-    if not headers:
-        return jsonify({'error': 'no token'})
-    today   = datetime.now(IST).date()
-    expiry  = get_active_expiry('BANKNIFTY', today)
-    url     = 'https://api.upstox.com/v2/option/chain'
-    params  = {'instrument_key': 'NSE_INDEX|Nifty Bank', 'expiry_date': expiry.strftime('%Y-%m-%d')}
-    r       = requests.get(url, headers=headers, params=params)
-    if r.status_code == 200:
-        data = r.json().get('data', [])
-        # Return first 2 items raw so we can inspect structure
-        return jsonify({'status': 'ok', 'expiry': str(expiry), 'sample': data[:2]})
-    return jsonify({'error': r.text[:500]})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
