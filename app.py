@@ -138,11 +138,11 @@ def generate_app_id_hash():
     return app_id_hash
 
 def load_refresh_token():
-    """Load refresh token from file"""
+    """Load refresh token from environment variable"""
     try:
-        if os.path.exists(FYERS_REFRESH_TOKEN_FILE):
-            with open(FYERS_REFRESH_TOKEN_FILE, 'r') as f:
-                return f.read().strip()
+        refresh_token = os.environ.get('FYERS_REFRESH_TOKEN', '')
+        if refresh_token:
+            return refresh_token.strip()
     except Exception as e:
         print(f"Error loading refresh token: {e}")
     return None
