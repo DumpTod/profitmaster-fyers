@@ -8,3 +8,4 @@ pandas==2.0.3
 pytz==2023.3
 fyers-apiv3==3.0.6
 yfinance==0.2.18
+gunicorn==20.1.0
