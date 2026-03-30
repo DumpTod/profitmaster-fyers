@@ -272,40 +272,54 @@ def calculate_atr_trailing(df, fast_period, fast_mult, slow_period, slow_mult):
 # ========================================
 # DATA FETCHING
 # ========================================
-def fetch_candles(instrument_key, interval='1minute', days=2):
+def fetch_candles(instrument_key, days=10):
     headers = get_headers()
     if not headers:
         return pd.DataFrame()
 
-    encoded  = quote(instrument_key, safe='')
-    end_date = datetime.now(IST)
-    # Single API call — just today and yesterday, enough for intraday signals
-    start_date = end_date - timedelta(days=days)
-    url = (
-        f"https://api.upstox.com/v2/historical-candle/{encoded}"
-        f"/{interval}"
-        f"/{end_date.strftime('%Y-%m-%d')}"
-        f"/{start_date.strftime('%Y-%m-%d')}"
-    )
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code != 200:
-            return pd.DataFrame()
-        candles = r.json().get('data', {}).get('candles', [])
-        if not candles:
-            return pd.DataFrame()
-        rows = [{'datetime': c[0], 'open': c[1], 'high': c[2],
-                 'low': c[3], 'close': c[4], 'volume': c[5]} for c in candles]
-        df = pd.DataFrame(rows)
-        df['datetime'] = pd.to_datetime(df['datetime'])
-        df = df.sort_values('datetime').drop_duplicates(subset='datetime').reset_index(drop=True)
-        df['time_val'] = df['datetime'].dt.hour * 100 + df['datetime'].dt.minute
-        df = df[(df['time_val'] >= 915) & (df['time_val'] <= 1530)].drop(columns=['time_val'])
-        return df.reset_index(drop=True)
-    except Exception as e:
-        print(f"Fetch error: {e}")
+    all_candles = []
+    end_date    = datetime.now(IST)
+    start_date  = end_date - timedelta(days=days)
+    current_to  = end_date
+
+    while current_to >= start_date:
+        current_from = max(start_date, current_to - timedelta(days=30))
+        url = (
+            f"https://api.fyers.in/api/v2/history"
+            f"?symbol={instrument_key}"
+            f"&resolution=1"
+            f"&date_format=1"
+            f"&range_from={current_from.strftime('%Y-%m-%d')}"
+            f"&range_to={current_to.strftime('%Y-%m-%d')}"
+            f"&cont_flag=1"
+        )
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code == 200 and r.json().get('s') == 'ok':
+                for c in r.json().get('candles', []):
+                    dt = pd.to_datetime(c[0], unit='s')
+                    dt = dt.tz_localize('UTC').tz_convert('Asia/Kolkata').tz_localize(None)
+                    all_candles.append({
+                        'datetime': dt,
+                        'open'    : c[1],
+                        'high'    : c[2],
+                        'low'     : c[3],
+                        'close'   : c[4],
+                        'volume'  : c[5]
+                    })
+        except Exception as e:
+            print(f"Fetch error: {e}")
+
+        current_to = current_from - timedelta(days=1)
+        time.sleep(0.2)
+
+    if not all_candles:
         return pd.DataFrame()
 
+    df = pd.DataFrame(all_candles)
+    df = df.sort_values('datetime').drop_duplicates('datetime').reset_index(drop=True)
+    t  = df['datetime'].dt.hour * 100 + df['datetime'].dt.minute
+    return df[(t >= 915) & (t <= 1530)].reset_index(drop=True)
 
 def resample_candles(df_1m, minutes):
     if len(df_1m) == 0:
