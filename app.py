@@ -18,9 +18,9 @@ app.secret_key = os.environ.get('FLASK_SECRET', 'atr-scanner-secret-key-2024')
 # ========================================
 # 🔑 FILL YOUR UPSTOX CREDENTIALS
 # ========================================
-API_KEY    = os.environ.get('API_KEY',    'dd06178d-b9a1-4854-b9fc-1bde72620f86')
-API_SECRET = os.environ.get('API_SECRET', 'un701txcrg')
-REDIRECT_URI = "https://profitmaster-4jdd.onrender.com/callback"
+API_KEY      = os.environ.get('API_KEY', 'VS55VDHYCW-100')
+API_SECRET   = os.environ.get('API_SECRET', '724FOKKSFS')
+REDIRECT_URI = https://trade.fyers.in/api-login/redirect-uri/index.html'
 
 # ========================================
 # Scanner Settings (from backtest)
@@ -148,8 +148,8 @@ def get_headers():
     if not token_data['access_token']:
         return None
     return {
-        'Authorization': f"Bearer {token_data['access_token']}",
-        'Accept': 'application/json'
+        'Authorization': f"{token_data['access_token']}",
+        'Accept'       : 'application/json'
     }
 
 # ========================================
@@ -157,11 +157,14 @@ def get_headers():
 # ========================================
 @app.route('/refresh')
 def refresh_token():
+    import hashlib
+    state = hashlib.sha256(API_KEY.encode()).hexdigest()[:16]
     auth_url = (
-        f"https://api.upstox.com/v2/login/authorization/dialog"
+        f"https://api.fyers.in/api/v2/generate-authcode"
         f"?client_id={API_KEY}"
         f"&redirect_uri={REDIRECT_URI}"
         f"&response_type=code"
+        f"&state={state}"
     )
     return redirect(auth_url)
 
@@ -170,32 +173,32 @@ def refresh_token():
 def callback():
     code = request.args.get('code')
     if not code:
-        return jsonify({'error': 'No authorization code received'}), 400
+        return jsonify({'error': 'No auth code received'}), 400
     try:
+        import hashlib, base64
+        # Fyers token exchange
+        app_id_hash = hashlib.sha256(f"{API_KEY}:{API_SECRET}".encode()).hexdigest()
         r = requests.post(
-            'https://api.upstox.com/v2/login/authorization/token',
-            data={
-                'grant_type':    'authorization_code',
-                'code':          code,
-                'client_id':     API_KEY,
-                'client_secret': API_SECRET,
-                'redirect_uri':  REDIRECT_URI
+            'https://api.fyers.in/api/v2/validate-authcode',
+            json={
+                'grant_type'   : 'authorization_code',
+                'appIdHash'    : app_id_hash,
+                'code'         : code,
             },
-            headers={
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept':       'application/json'
-            }
+            headers={'Content-Type': 'application/json'}
         )
-        if r.status_code == 200:
-            data = r.json()
-            save_token(data['access_token'])
+        if r.status_code == 200 and r.json().get('s') == 'ok':
+            access_token = f"{API_KEY}:{r.json()['access_token']}"
+            save_token(access_token)
             return '''
-            <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#1a2a4a;color:white">
-            <h1>✅ Token Refreshed!</h1><p>ATR Scanner is ready.</p>
-            <a href="/" style="color:#22c55e;font-size:18px">← Go to Scanner</a>
-            </body></html>'''
-        else:
-            return jsonify({'error': 'Token exchange failed', 'details': r.text}), 400
+            <html><body style="font-family:sans-serif;text-align:center;padding:50px;
+            background:#0f1f3d;color:white">
+            <h1>✅ Token Refreshed!</h1>
+            <p>StrikeTrail Fyers scanner is ready.</p>
+            <a href="/" style="color:#22c55e;font-size:18px">Go to Scanner</a>
+            </body></html>
+            '''
+        return jsonify({'error': 'Token exchange failed', 'details': r.text}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
