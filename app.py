@@ -160,7 +160,7 @@ def refresh_token():
     import hashlib
     state = hashlib.sha256(API_KEY.encode()).hexdigest()[:16]
     auth_url = (
-        f"https://api.fyers.in/api/v2/generate-authcode"
+        f"https://api.fyers.in/api/v3/generate-authcode"
         f"?client_id={API_KEY}"
         f"&redirect_uri={REDIRECT_URI}"
         f"&response_type=code"
@@ -179,7 +179,7 @@ def callback():
         # Fyers token exchange
         app_id_hash = hashlib.sha256(f"{API_KEY}:{API_SECRET}".encode()).hexdigest()
         r = requests.post(
-            'https://api.fyers.in/api/v2/validate-authcode',
+            'https://api.fyers.in/api/v3/validate-authcode',
             json={
                 'grant_type'   : 'authorization_code',
                 'appIdHash'    : app_id_hash,
@@ -285,7 +285,7 @@ def fetch_candles(instrument_key, days=10):
     while current_to >= start_date:
         current_from = max(start_date, current_to - timedelta(days=30))
         url = (
-            f"https://api.fyers.in/api/v2/history"
+            f"https://api.fyers.in/api/v3/history"
             f"?symbol={instrument_key}"
             f"&resolution=1"
             f"&date_format=1"
