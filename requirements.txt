@@ -1,10 +1,10 @@
-flask
-flask-cors
-requests
-numpy
-pandas
-pytz
-gunicorn
 Flask==2.3.2
+flask-cors==4.0.0
+requests==2.31.0
+numpy==1.24.3
+pandas==2.0.3
+pytz==2023.3
 fyers-apiv3==3.0.6
 yfinance==0.2.18
+aiohttp==3.9.5
+multitasking==0.0.12
