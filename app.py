@@ -27,7 +27,7 @@ REDIRECT_URI = https://trade.fyers.in/api-login/redirect-uri/index.html'
 # ========================================
 SCANNER_CONFIG = {
     'NIFTY': {
-        'instrument_key': 'NSE_INDEX|Nifty 50',
+        'instrument_key'  : 'NSE:NIFTY50-INDEX',
         'timeframe': '1minute',
         'resample_minutes': 15,
         'fast_period': 3,
@@ -39,7 +39,7 @@ SCANNER_CONFIG = {
         'options_key': 'NSE_INDEX|Nifty 50'
     },
     'BANKNIFTY': {
-        'instrument_key': 'NSE_INDEX|Nifty Bank',
+        'instrument_key'  : 'NSE:NIFTYBANK-INDEX',
         'timeframe': '1minute',
         'resample_minutes': 5,
         'fast_period': 5,
