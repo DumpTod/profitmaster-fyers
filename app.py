@@ -20,7 +20,7 @@ app.secret_key = os.environ.get('FLASK_SECRET', 'atr-scanner-secret-key-2024')
 # ========================================
 API_KEY      = os.environ.get('API_KEY', 'VS55VDHYCW-100')
 API_SECRET   = os.environ.get('API_SECRET', '724FOKKSFS')
-REDIRECT_URI = https://trade.fyers.in/api-login/redirect-uri/index.html'
+REDIRECT_URI = 'https://trade.fyers.in/api-login/redirect-uri/index.html'
 
 # ========================================
 # Scanner Settings (from backtest)
