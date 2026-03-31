@@ -246,20 +246,17 @@ def get_fyers_headers():
 # AUTH ROUTES
 # ========================================
 @app.route('/refresh')
-def refresh_token_route():
-    # For Fyers, we'll use the refresh token mechanism
-    try:
-        access_token = refresh_access_token()
-        if access_token:
-            return '''
-            <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#1a2a4a;color:white">
-            <h1>✅ Token Refreshed!</h1><p>Fyers ATR Scanner is ready.</p>
-            <a href="/" style="color:#22c55e;font-size:18px">← Go to Scanner</a>
-            </body></html>'''
-        else:
-            return jsonify({'error': 'Failed to refresh token'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+def refresh_token():
+    import hashlib
+    state = 'sample_state'
+    auth_url = (
+        f"https://api-t1.fyers.in/api/v3/generate-authcode"
+        f"?client_id={API_KEY}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&response_type=code"
+        f"&state={state}"
+    )
+    return redirect(auth_url)
 
 # ========================================
 # CORE: ATR TRAILING STOP CALCULATOR
