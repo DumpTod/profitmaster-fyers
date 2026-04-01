@@ -19,8 +19,8 @@ app.secret_key = os.environ.get('FLASK_SECRET', 'atr-scanner-secret-key-2024')
 # ========================================
 # FYERS CREDENTIALS
 # ========================================
-FYERS_APP_ID     = os.environ.get('API_KEY', 'YOUR_APP_ID-100')
-FYERS_SECRET_KEY = os.environ.get('API_SECRET', 'YOUR_SECRET')
+FYERS_APP_ID     = os.environ.get('API_KEY', 'VS55VDHYCW-100')
+FYERS_SECRET_KEY = os.environ.get('API_SECRET', '724FOKKSFS')
 FYERS_REDIRECT_URL = 'https://trade.fyers.in/api-login/redirect-uri/index.html'
 
 # ========================================
