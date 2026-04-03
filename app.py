@@ -52,9 +52,10 @@ SCANNER_CONFIG = {
 }
 
 IST        = pytz.timezone('Asia/Kolkata')
-TOKEN_FILE = '/tmp/token.json'
+TOKEN_FILE   = '/tmp/token.json'
+REFRESH_FILE = '/tmp/refresh_token.txt'
 
-token_data    = {'access_token': None, 'token_time': None}
+token_data    = {'access_token': None, 'token_time': None, 'refresh_token': None}
 scan_cache    = {'signals': [], 'last_scan': None}
 options_cache = {'signals': [], 'last_fetch': None}
 
@@ -62,9 +63,16 @@ options_cache = {'signals': [], 'last_fetch': None}
 # ========================================
 # TOKEN MANAGEMENT
 # ========================================
-def save_token(access_token):
+def save_token(access_token, refresh_token=None):
     token_data['access_token'] = access_token
     token_data['token_time']   = datetime.now(IST).isoformat()
+    if refresh_token:
+        token_data['refresh_token'] = refresh_token
+        try:
+            with open(REFRESH_FILE, 'w') as f:
+                f.write(refresh_token)
+        except Exception:
+            pass
     try:
         with open(TOKEN_FILE, 'w') as f:
             json.dump(token_data, f)
@@ -76,13 +84,54 @@ def load_token():
     try:
         with open(TOKEN_FILE, 'r') as f:
             data = json.load(f)
-            token_data['access_token'] = data.get('access_token')
-            token_data['token_time']   = data.get('token_time')
+            token_data['access_token']  = data.get('access_token')
+            token_data['token_time']    = data.get('token_time')
+            token_data['refresh_token'] = data.get('refresh_token')
     except Exception:
         pass
+    # Also load refresh token from file if not in token_data
+    if not token_data['refresh_token']:
+        try:
+            with open(REFRESH_FILE, 'r') as f:
+                token_data['refresh_token'] = f.read().strip()
+        except Exception:
+            pass
+
+
+def auto_refresh_access_token():
+    """Use refresh token to get new access token automatically. Valid 15 days."""
+    refresh_token = token_data.get('refresh_token')
+    if not refresh_token:
+        return False
+    try:
+        app_id_hash = hashlib.sha256(f"{FYERS_APP_ID}:{FYERS_SECRET_KEY}".encode()).hexdigest()
+        r = req.post(
+            'https://api-t1.fyers.in/api/v3/validate-refresh-token',
+            json={
+                'grant_type'   : 'refresh_token',
+                'appIdHash'    : app_id_hash,
+                'refresh_token': refresh_token,
+                'pin'          : os.environ.get('FYERS_PIN', ''),
+            },
+            headers={'Content-Type': 'application/json'}
+        )
+        if r.status_code == 200 and r.json().get('s') == 'ok':
+            new_access_token = f"{FYERS_APP_ID}:{r.json()['access_token']}"
+            save_token(new_access_token)
+            print("Auto-refresh successful")
+            return True
+        else:
+            print(f"Auto-refresh failed: {r.text}")
+            return False
+    except Exception as e:
+        print(f"auto_refresh_access_token error: {e}")
+        return False
 
 
 load_token()
+# Try auto-refresh on startup if access token missing but refresh token exists
+if not token_data['access_token'] and token_data['refresh_token']:
+    auto_refresh_access_token()
 
 
 def init_fyers():
@@ -151,8 +200,12 @@ def round_to_strike(price, step):
 # ========================================
 # AUTH ROUTES
 # ========================================
+# ========================================
+# AUTH ROUTES
+# ========================================
 @app.route('/refresh')
 def refresh_token():
+    """Redirect to Fyers login page to get auth code."""
     auth_url = (
         f"https://api-t1.fyers.in/api/v3/generate-authcode"
         f"?client_id={FYERS_APP_ID}"
@@ -163,36 +216,59 @@ def refresh_token():
     return redirect(auth_url)
 
 
+@app.route('/set-token')
+def set_token():
+    """
+    Manually set access token + optional refresh token.
+    Usage:
+      /set-token?token=APPID:ACCESS_TOKEN&refresh=REFRESH_TOKEN
+    After setting refresh token once, auto-renewal works for 15 days.
+    """
+    access_token  = request.args.get('token', '').strip()
+    refresh_token = request.args.get('refresh', '').strip()
+
+    if not access_token:
+        return '''
+        <html><body style="font-family:sans-serif;padding:40px;background:#0f1f3d;color:white">
+        <h2>Set Fyers Token</h2>
+        <p style="color:#aaa">Paste your access token (format: APPID:token) and optionally your refresh token.</p>
+        <form method="GET" action="/set-token">
+            <p><label>Access Token:</label><br>
+            <input name="token" style="width:500px;padding:8px;margin-top:5px;background:#1a2a4a;color:white;border:1px solid #3b82f6;border-radius:4px" placeholder="VS55VDHYCW-100:eyJ..."></p>
+            <p><label>Refresh Token (optional but recommended for 15-day auto-renewal):</label><br>
+            <input name="refresh" style="width:500px;padding:8px;margin-top:5px;background:#1a2a4a;color:white;border:1px solid #3b82f6;border-radius:4px" placeholder="eyJ..."></p>
+            <p><button type="submit" style="padding:10px 24px;background:#22c55e;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer">Save Token</button></p>
+        </form>
+        </body></html>
+        '''
+
+    save_token(access_token, refresh_token if refresh_token else None)
+    refresh_msg = ' + refresh token saved (15-day auto-renewal enabled)' if refresh_token else ''
+    return f'''
+    <html><body style="font-family:sans-serif;text-align:center;padding:50px;
+    background:#0f1f3d;color:white">
+    <h1>&#10003; Token Saved!</h1>
+    <p>Access token{refresh_msg}</p>
+    <a href="/" style="color:#22c55e;font-size:18px">Go to Scanner</a>
+    </body></html>
+    '''
+
+
+@app.route('/auto-refresh')
+def trigger_auto_refresh():
+    """Manually trigger auto-refresh using saved refresh token."""
+    success = auto_refresh_access_token()
+    if success:
+        return jsonify({'status': 'success', 'message': 'Token refreshed successfully',
+                        'token_time': token_data.get('token_time')})
+    return jsonify({'status': 'error', 'message': 'Auto-refresh failed — refresh token missing or expired'})
+
+
 @app.route('/callback')
 def callback():
-    code = request.args.get('code')
-    if not code:
-        return jsonify({'error': 'No auth code received'}), 400
-    try:
-        app_id_hash = hashlib.sha256(f"{FYERS_APP_ID}:{FYERS_SECRET_KEY}".encode()).hexdigest()
-        r = req.post(
-            'https://api-t1.fyers.in/api/v3/validate-authcode',
-            json={
-                'grant_type': 'authorization_code',
-                'appIdHash' : app_id_hash,
-                'code'      : code,
-            },
-            headers={'Content-Type': 'application/json'}
-        )
-        if r.status_code == 200 and r.json().get('s') == 'ok':
-            access_token = f"{FYERS_APP_ID}:{r.json()['access_token']}"
-            save_token(access_token)
-            return '''
-            <html><body style="font-family:sans-serif;text-align:center;padding:50px;
-            background:#0f1f3d;color:white">
-            <h1>&#10003; Token Refreshed!</h1>
-            <p>StrikeTrail Fyers scanner is ready.</p>
-            <a href="/" style="color:#22c55e;font-size:18px">Go to Scanner</a>
-            </body></html>
-            '''
-        return jsonify({'error': 'Token exchange failed', 'details': r.text}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    """Legacy callback — redirects to set-token page."""
+    code = request.args.get('code', '')
+    return redirect(f'/set-token')
 
 
 # ========================================
