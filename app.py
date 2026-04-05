@@ -127,7 +127,19 @@ def auto_refresh_access_token():
         print(f"auto_refresh_access_token error: {e}")
         return False
 
-
+def load_token():
+    # Load from env var first (survives restarts)
+    env_token = os.environ.get('FYERS_ACCESS_TOKEN', '')
+    if env_token:
+        token_data['access_token'] = env_token
+        token_data['token_time']   = 'from_env'
+    try:
+        with open(TOKEN_FILE, 'r') as f:
+            data = json.load(f)
+            token_data['access_token'] = data.get('access_token')
+            token_data['token_time']   = data.get('token_time')
+    except Exception:
+        pass
 load_token()
 # Try auto-refresh on startup if access token missing but refresh token exists
 if not token_data['access_token'] and token_data['refresh_token']:
