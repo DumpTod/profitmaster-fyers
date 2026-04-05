@@ -270,7 +270,23 @@ def callback():
     code = request.args.get('code', '')
     return redirect(f'/set-token')
 
-
+@app.route('/api/debug')
+def api_debug():
+    from datetime import datetime
+    now = datetime.now(IST)
+    fyers = init_fyers()
+    if not fyers:
+        return jsonify({'error': 'no_fyers'})
+    data = {
+        'symbol': 'NSE:NIFTY50-INDEX',
+        'resolution': '5',
+        'date_format': '1',
+        'range_from': now.strftime('%Y-%m-%d'),
+        'range_to': now.strftime('%Y-%m-%d'),
+        'cont_flag': '1'
+    }
+    r = fyers.history(data=data)
+    return jsonify({'status': r.get('s'), 'candles': len(r.get('candles', [])), 'sample': r.get('candles', [])[-3:] if r.get('candles') else []})
 # ========================================
 # OPTION CHAIN — STRIKE NEAREST TO TP1
 # ========================================
