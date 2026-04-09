@@ -164,31 +164,29 @@ def init_fyers():
 # EXPIRY LOGIC — UPDATED 2026 HOLIDAYS
 # ========================================
 TRADING_HOLIDAYS = {
-    # 2024
+    # 2024 & 2025
     date(2024,1,26), date(2024,3,25), date(2024,4,14), date(2024,4,17),
     date(2024,5,1),  date(2024,6,17), date(2024,8,15), date(2024,10,2),
     date(2024,10,24),date(2024,11,1), date(2024,11,15),date(2024,12,25),
-    # 2025
     date(2025,1,26), date(2025,2,26), date(2025,3,14), date(2025,3,31),
     date(2025,4,10), date(2025,4,14), date(2025,4,18), date(2025,5,1),
     date(2025,8,15), date(2025,10,2), date(2025,10,23),date(2025,12,25),
-    # 2026 — COMPLETE CALENDAR
+    # 2026 — UPDATED
     date(2026,1,26),  # Republic Day
-    date(2026,3,25),  # Holi
-    date(2026,4,2),   # Mahavir Jayanti
-    date(2026,4,10),  # Good Friday
+    date(2026,3,3),   # Holi
+    date(2026,3,26),  # Shri Ram Navami
+    date(2026,3,31),  # Shri Mahavir Jayanti
+    date(2026,4,3),   # Good Friday
     date(2026,4,14),  # Dr. Ambedkar Jayanti
     date(2026,5,1),   # Maharashtra Day
-    date(2026,7,17),  # Muharram (tentative)
-    date(2026,8,15),  # Independence Day
+    date(2026,5,28),  # Bakri Id
+    date(2026,6,26),  # Muharram
+    date(2026,9,14),  # Ganesh Chaturthi
     date(2026,10,2),  # Gandhi Jayanti
-    date(2026,10,22), # Dussehra (tentative)
-    date(2026,11,11), # Diwali (tentative)
-    date(2026,11,26), # Gurupurab (tentative)
-    # 2027 (add future years as needed)
-    date(2027,1,26), date(2027,3,15), date(2027,3,30), date(2027,4,2),
-    date(2027,4,14), date(2027,5,1),  date(2027,7,7),  date(2027,8,15),
-    date(2027,10,2), date(2027,10,11),date(2027,10,31),date(2027,11,15),
+    date(2026,10,20), # Dussehra
+    date(2026,11,10), # Diwali-Balipratipada
+    date(2026,11,24), # Gurupurab
+    date(2026,12,25), # Christmas
 }
 
 def is_trading_day(d):
