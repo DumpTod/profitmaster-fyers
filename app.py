@@ -138,6 +138,8 @@ def auto_refresh_access_token():
 
 
 load_token()
+if not token_data['access_token'] and os.environ.get('FYERS_ACCESS_TOKEN'):
+    save_token(os.environ['FYERS_ACCESS_TOKEN'], os.environ.get('FYERS_REFRESH_TOKEN'))
 # Try auto-refresh on startup if access token missing but refresh token exists
 if not token_data['access_token'] and token_data['refresh_token']:
     print("⟳ No access token found on startup, attempting auto-refresh...")
