@@ -962,7 +962,20 @@ def api_track():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
-
+@app.route('/debug-token')
+def debug_token():
+    """Debug endpoint to check token status"""
+    return jsonify({
+        'env_refresh_token_set': bool(PERMANENT_REFRESH_TOKEN),
+        'env_token_length': len(PERMANENT_REFRESH_TOKEN) if PERMANENT_REFRESH_TOKEN else 0,
+        'env_token_starts_with': PERMANENT_REFRESH_TOKEN[:20] + '...' if PERMANENT_REFRESH_TOKEN else None,
+        'token_data_refresh': bool(token_data.get('refresh_token')),
+        'token_data_access': bool(token_data.get('access_token')),
+        'token_time': token_data.get('token_time'),
+        'all_env_vars': {k: ('***set***' if 'TOKEN' in k.upper() or 'PIN' in k.upper() or 'SECRET' in k.upper() else v) 
+                        for k, v in os.environ.items() if 'FYERS' in k.upper() or 'API' in k.upper()}
+    })
+    
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"\n{'='*60}")
