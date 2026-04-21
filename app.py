@@ -629,38 +629,18 @@ def api_track():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/debug-fyers')
-def debug_fyers():
-    """Test if Fyers connection actually works"""
-    result = {
-        'token_exists': bool(token_data.get('access_token')),
-        'token_prefix': token_data.get('access_token', '')[:30] + '...' if token_data.get('access_token') else None,
-        'token_time': token_data.get('token_time'),
-    }
+@app.route('/debug-token-format')
+def debug_token_format():
+    token = token_data.get('access_token', '')
+    return jsonify({
+        'full_token': token,
+        'has_prefix': ':' in token if token else False,
+        'prefix_part': token.split(':')[0] if ':' in token else None,
+        'jwt_part': token.split(':')[1] if ':' in token else None,
+        'jwt_starts_with_ey': token.split(':')[1].startswith('eyJ') if ':' in token and len(token.split(':')) > 1 else False,
+        'suggested_fix': "Remove VS55VDHYCW-100: prefix from token parameter" if ':' in token else "Token looks OK"
+    })
     
-    fyers = init_fyers()
-    result['fyers_client_created'] = fyers is not None
-    
-    if fyers:
-        try:
-            # Try to fetch just 1 day of NIFTY data as test
-            test_data = fyers.history(data={
-                'symbol': 'NSE:NIFTY50-INDEX',
-                'resolution': '1',
-                'date_format': '1',
-                'range_from': (datetime.now(IST) - timedelta(days=1)).strftime('%Y-%m-%d'),
-                'range_to': datetime.now(IST).strftime('%Y-%m-%d'),
-                'cont_flag': '1'
-            })
-            result['history_status'] = test_data.get('s')
-            result['history_message'] = test_data.get('message', '')
-            result['candle_count'] = len(test_data.get('candles', []))
-            result['raw_response_keys'] = list(test_data.keys())
-        except Exception as e:
-            result['error'] = str(e)
-    
-    return jsonify(result)
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"\n🚀 SCANNER STARTING on port {port}")
