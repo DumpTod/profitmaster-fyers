@@ -173,37 +173,145 @@ def round_to_strike(price, step):
     return round(round(price / step) * step, 2)
 
 
+# ========================================
+# ✅ UPDATED AUTH ROUTES (Auto-converts auth_code → tokens!)
+# ========================================
 @app.route('/refresh')
 def refresh_token():
     return redirect(f"https://api-t1.fyers.in/api/v3/generate-authcode?client_id={FYERS_APP_ID}&redirect_uri={FYERS_REDIRECT_URL}&response_type=code&state=sample_state")
 
 
+@app.route('/callback')
+def callback():
+    """Receive auth code from Fyers and convert to access token AUTOMATICALLY"""
+    auth_code = request.args.get('code', '')
+    
+    if not auth_code:
+        return redirect('/set-token')
+    
+    try:
+        app_id_hash = hashlib.sha256(f"{FYERS_APP_ID}:{FYERS_SECRET_KEY}".encode()).hexdigest()
+        
+        print(f"🔑 Received auth_code, exchanging for tokens...")
+        
+        r = req.post(
+            'https://api-t1.fyers.in/api/v3/validate-authcode',
+            json={
+                'grant_type': 'authorization_code',
+                'appIdHash': app_id_hash,
+                'code': auth_code,
+                'pin': ''
+            },
+            headers={'Content-Type': 'application/json'},
+            timeout=15
+        )
+        
+        if r.status_code == 200 and r.json().get('s') == 'ok':
+            data = r.json()
+            access_token = f"{FYERS_APP_ID}:{data['access_token']}"
+            refresh_token = data.get('refresh_token')
+            
+            save_token(access_token, refresh_token)
+            
+            print(f"✅ SUCCESS! Got real access_token and refresh_token!")
+            
+            return f'''
+            <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
+            <h1 style="font-size:48px">✅ Login Successful!</h1>
+            <p style="color:#22c55e;font-size:18px;margin-top:20px">Access token generated automatically!</p>
+            <p style="color:#aaa">Time: {datetime.now(IST).strftime('%d %b %Y %H:%M:%S IST')}</p>
+            <a href="/" style="color:#22c55e;font-size:18px;margin-top:30px;display:inline-block;padding:12px 30px;background:#166534;border-radius:6px;font-weight:600">📊 Go to Scanner →</a>
+            </body></html>
+            '''
+        else:
+            error_msg = r.json().get('message', 'Unknown error')
+            print(f"❌ Auth code exchange failed: {error_msg}")
+            return f'''
+            <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
+            <h1 style="color:#ef4444">❌ Login Failed</h1>
+            <p style="color:#ef4444">{error_msg}</p>
+            <a href="/refresh" style="color:#f59e0b;margin-top:20px;display:inline-block">Try Again</a>
+            </body></html>
+            '''
+            
+    except Exception as e:
+        print(f"❌ Callback error: {e}")
+        return redirect('/set-token')
+
+
 @app.route('/set-token')
 def set_token():
+    """Manual token entry - also handles auth_code conversion"""
     access_token = request.args.get('token', '').strip()
     refresh_token = request.args.get('refresh', '').strip()
-
+    auth_code = request.args.get('code', '').strip()
+    
+    # If user pasted an auth_code, convert it automatically
+    if auth_code and not access_token:
+        try:
+            app_id_hash = hashlib.sha256(f"{FYERS_APP_ID}:{FYERS_SECRET_KEY}".encode()).hexdigest()
+            r = req.post(
+                'https://api-t1.fyers.in/api/v3/validate-authcode',
+                json={
+                    'grant_type': 'authorization_code',
+                    'appIdHash': app_id_hash,
+                    'code': auth_code,
+                    'pin': ''
+                },
+                headers={'Content-Type': 'application/json'},
+                timeout=15
+            )
+            
+            if r.status_code == 200 and r.json().get('s') == 'ok':
+                data = r.json()
+                access_token = f"{FYERS_APP_ID}:{data['access_token']}"
+                refresh_token = data.get('refresh_token')
+                
+                save_token(access_token, refresh_token)
+                
+                return f'''
+                <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
+                <h1>✅ Auth Code Converted!</h1>
+                <p style="color:#22c55e">Got real access_token & refresh_token!</p>
+                <a href="/" style="color:#22c55e;font-size:18px;margin-top:20px;display:inline-block">📊 Go to Scanner →</a>
+                </body></html>
+                '''
+        except Exception as e:
+            pass
+    
     if not access_token:
         return '''
         <html><body style="font-family:sans-serif;padding:40px;background:#0f1f3d;color:white">
         <h2>Set Fyers Token</h2>
-        <p style="color:#aaa;margin-bottom:20px">Paste your tokens below:</p>
-        <form method="GET" action="/set-token">
-            <p><label>Access Token (format: APPID:eyJ...):</label><br>
-            <input name="token" style="width:500px;padding:8px;margin-top:5px;background:#1a2a4a;color:white;border:1px solid #3b82f6;border-radius:4px" placeholder="VS55VDHYCW-100:eyJhbGci..."></p>
-            <p><label>Refresh Token (optional):</label><br>
-            <input name="refresh" style="width:500px;padding:8px;margin-top:5px;background:#1a2a4a;color:white;border:1px solid #3b82f6;border-radius:4px" placeholder="eyJhbGci..."></p>
-            <p><button type="submit" style="padding:10px 24px;background:#22c55e;color:white;border:none;border-radius:6px;cursor:pointer">Save Token</button></p>
+        
+        <div style="background:#1a2a4a;padding:20px;border-radius:8px;margin-bottom:20px">
+        <h3 style="color:#22c55e">✅ Option A: Auto-Login (Recommended)</h3>
+        <p style="color:#aaa">Click below to login via Fyers. Tokens are generated automatically!</p>
+        <p style="margin-top:10px"><a href="/refresh" style="color:#fff;text-decoration:none;padding:10px 24px;background:#166534;border-radius:6px;display:inline-block;font-weight:600">🔑 Login via Fyers</a></p>
+        </div>
+        
+        <hr style="border-color:#333;margin:25px 0">
+        
+        <div style="background:#1a2a4a;padding:20px;border-radius:8px">
+        <h3 style="color:#f59e0b">⚙️ Option B: Manual Entry</h3>
+        <p style="color:#aaa"><strong>IMPORTANT:</strong> Paste ACCESS TOKEN only (not auth_code!). Format: APPID:eyJ...</p>
+        <form method="GET" action="/set-token" style="margin-top:15px">
+            <p><label>Access Token:</label><br>
+            <input name="token" style="width:500px;padding:8px;margin-top:5px;background:#0f1f3d;color:white;border:1px solid #3b82f6;border-radius:4px"></p>
+            <p><label>Refresh Token:</label><br>
+            <input name="refresh" style="width:500px;padding:8px;margin-top:5px;background:#0f1f3d;color:white;border:1px solid #3b82f6;border-radius:4px"></p>
+            <p><button type="submit" style="padding:10px 24px;background:#22c55e;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💾 Save Token</button></p>
         </form>
+        </div>
         </body></html>
         '''
 
     save_token(access_token, refresh_token if refresh_token else None)
     return f'''
     <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
-    <h1>✅ Token Saved!</h1>
-    <p>Time: {datetime.now(IST).strftime('%d %b %Y %H:%M:%S IST')}</p>
-    <a href="/" style="color:#22c55e;font-size:18px">Go to Scanner →</a>
+    <h1 style="font-size:48px">✅ Token Saved!</h1>
+    <p style="color:#22c55e;font-size:18px">Time: {datetime.now(IST).strftime('%d %b %Y %H:%M:%S IST')}</p>
+    <a href="/" style="color:#22c55e;font-size:18px;margin-top:20px;display:inline-block;padding:12px 30px;background:#166534;border-radius:6px;font-weight:600">📊 Go to Scanner →</a>
     </body></html>
     '''
 
@@ -214,9 +322,34 @@ def trigger_auto_refresh():
     return jsonify({'status': 'success' if success else 'error', 'timestamp': datetime.now(IST).isoformat()})
 
 
-@app.route('/callback')
-def callback():
-    return redirect(f'/set-token')
+@app.route('/debug-fyers')
+def debug_fyers():
+    result = {
+        'token_exists': bool(token_data.get('access_token')),
+        'token_prefix': token_data.get('access_token', '')[:40] + '...' if token_data.get('access_token') else None,
+        'token_time': token_data.get('token_time'),
+    }
+    
+    fyers = init_fyers()
+    result['fyers_client_created'] = fyers is not None
+    
+    if fyers:
+        try:
+            test_data = fyers.history(data={
+                'symbol': 'NSE:NIFTY50-INDEX',
+                'resolution': '1',
+                'date_format': '1',
+                'range_from': (datetime.now(IST) - timedelta(days=1)).strftime('%Y-%m-%d'),
+                'range_to': datetime.now(IST).strftime('%Y-%m-%d'),
+                'cont_flag': '1'
+            })
+            result['history_status'] = test_data.get('s')
+            result['history_message'] = test_data.get('message', '')
+            result['candle_count'] = len(test_data.get('candles', []))
+        except Exception as e:
+            result['error'] = str(e)
+    
+    return jsonify(result)
 
 
 def get_fyers_expiry_timestamp(fyers, option_key, target_expiry_date):
@@ -361,7 +494,7 @@ def generate_signals():
         try:
             print(f"\n📊 Scanning {symbol}...")
             
-            # ✅ FIX #1: days=90 (was days=5)
+            # ✅ FIX #1: days=90
             df_1m = fetch_candles(config['instrument_key'], '1minute', days=90)
             
             if len(df_1m) < 50:
@@ -375,7 +508,7 @@ def generate_signals():
             df = calculate_atr_trailing(df, config['fast_period'], config['fast_mult'], config['slow_period'], config['slow_mult'])
             df['date'] = pd.to_datetime(df['datetime']).dt.date
             
-            # ✅ FIX #2: Last 200 candles (was today-only)
+            # ✅ FIX #2: Last 200 candles
             if len(df) >= 200:
                 scan_df = df.tail(200).copy()
             else:
@@ -510,8 +643,9 @@ def home():
     <p style="margin:10px"><strong>Login Time:</strong> {tt}</p>
     <p style="margin:10px"><strong>Server Time:</strong> {datetime.now(IST).strftime('%d %b %Y %H:%M:%S')}</p>
     </div>
-    <p><a href="/set-token" style="color:#22c55e;text-decoration:none;padding:10px 24px;background:#166534;border-radius:6px;display:inline-block;margin:5px">🔑 Set Token</a></p>
+    <p><a href="/refresh" style="color:#22c55e;text-decoration:none;padding:10px 24px;background:#166534;border-radius:6px;display:inline-block;margin:5px">🔑 Login via Fyers</a></p>
     <p><a href="/api/signals" style="color:#22d3ee;text-decoration:none;padding:10px 24px;background:#164e63;border-radius:6px;display:inline-block;margin:5px">📊 Signals</a></p>
+    <p><a href="/debug-fyers" style="color:#a78bfa;text-decoration:none;padding:10px 24px;background:#4c1d95;border-radius:6px;display:inline-block;margin:5px">🔍 Debug</a></p>
     </body></html>
     '''
 
@@ -587,13 +721,9 @@ def api_track():
                 t2 = float(sig.get('target_2', sig.get('target', 0)))
                 for idx, row in df_after.iterrows():
                     if direction == 'BUY-LONG' and row['high'] >= entry:
-                        entry_met = True
-                        entry_idx = idx
-                        break
+                        entry_met = True; entry_idx = idx; break
                     elif direction == 'SELL-SHORT' and row['low'] <= entry:
-                        entry_met = True
-                        entry_idx = idx
-                        break
+                        entry_met = True; entry_idx = idx; break
                 if not entry_met:
                     results.append({'_id': sig.get('_id'), 'status': 'pending', 'current_price': float(df_after.iloc[-1]['close']), 'track_status': 'entry_not_met'})
                     continue
@@ -604,23 +734,11 @@ def api_track():
                 current_price = float(df_post.iloc[-1]['close'])
                 for _, row in df_post.iterrows():
                     if direction == 'BUY-LONG':
-                        if row['high'] >= t2:
-                            trade_status = 'target_hit'
-                            exit_price = t2
-                            break
-                        if row['low'] <= sl:
-                            trade_status = 'stop_hit'
-                            exit_price = sl
-                            break
+                        if row['high'] >= t2: trade_status = 'target_hit'; exit_price = t2; break
+                        if row['low'] <= sl: trade_status = 'stop_hit'; exit_price = sl; break
                     else:
-                        if row['low'] <= t2:
-                            trade_status = 'target_hit'
-                            exit_price = t2
-                            break
-                        if row['high'] >= sl:
-                            trade_status = 'stop_hit'
-                            exit_price = sl
-                            break
+                        if row['low'] <= t2: trade_status = 'target_hit'; exit_price = t2; break
+                        if row['high'] >= sl: trade_status = 'stop_hit'; exit_price = sl; break
                 pnl_pct = round((current_price - entry) / entry * 100, 2) if direction == 'BUY-LONG' else round((entry - current_price) / entry * 100, 2)
                 results.append({'_id': sig.get('_id'), 'status': trade_status, 'exit_price': exit_price, 'current_price': current_price, 'live_pnl_pct': pnl_pct, 'track_status': 'tracked'})
             except Exception as e:
@@ -629,18 +747,7 @@ def api_track():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/debug-token-format')
-def debug_token_format():
-    token = token_data.get('access_token', '')
-    return jsonify({
-        'full_token': token,
-        'has_prefix': ':' in token if token else False,
-        'prefix_part': token.split(':')[0] if ':' in token else None,
-        'jwt_part': token.split(':')[1] if ':' in token else None,
-        'jwt_starts_with_ey': token.split(':')[1].startswith('eyJ') if ':' in token and len(token.split(':')) > 1 else False,
-        'suggested_fix': "Remove VS55VDHYCW-100: prefix from token parameter" if ':' in token else "Token looks OK"
-    })
-    
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"\n🚀 SCANNER STARTING on port {port}")
