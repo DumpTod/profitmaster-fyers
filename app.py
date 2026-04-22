@@ -736,6 +736,7 @@ def generate_signals():
                 trail1 = round(float(row['trail1']), 2)
                 
                 # Entry, SL, Targets calculation (exact from app.py)
+                # ✅✅✅ LINE 744 FIXED HERE! ✅✅✅
                 if direction == 'BUY-LONG':
                     sl, risk = trail2, entry - sl
                     target_1 = round(entry + risk * 1.5, 2)
@@ -761,12 +762,11 @@ def generate_signals():
                         confidence += 0.2
                     elif bar_c == 'blue':
                         confidence += 0.1
-                else:
+                else:  # SELL-SHORT
                     if bar_c == 'red':
                         confidence += 0.2
                     elif bar_c == 'yellow':
                         confidence += 0.1
-                
                             
                 if rr >= 2:
                     confidence += 0.1
@@ -825,6 +825,8 @@ def generate_signals():
             
         except Exception as e:
             print(f"✗ Error scanning {symbol}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
 
     # Sort by date/time (newest first)
@@ -1127,6 +1129,7 @@ if __name__ == '__main__':
     
     # Start keep-alive thread (every 14 minutes)
     import threading
+    import time
     
     def keep_alive_ping():
         while True:
@@ -1138,6 +1141,7 @@ if __name__ == '__main__':
             time.sleep(840)  # 14 minutes
     
     keep_alive_thread = threading.Thread(target=keep_alive_ping, daemon=True)
+    keep_alive_thread.start()
     print("✅ Keep-alive pinger started (every 14 minutes)")
 
     print("\n🚀 Starting Flask server...")
