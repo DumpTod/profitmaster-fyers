@@ -740,8 +740,8 @@ def generate_signals():
                     sl, risk = trail2, entry - sl
                     target_1 = round(entry + risk * 1.5, 2)
                     target_2 = round(entry + risk * 2.5, 2)
-                else:
-                    sl, risk = sl - entry, risk = sl - entry
+                else:  # SELL-SHORT
+                    sl, risk = trail2, sl - entry  # ✅ FIXED: Was "sl - entry, risk = sl - entry"
                     target_1 = round(entry - risk * 1.5, 2)
                     target_2 = round(entry - risk * 2.5, 2)
                 
@@ -766,12 +766,7 @@ def generate_signals():
                         confidence += 0.2
                     elif bar_c == 'yellow':
                         confidence += 0.1
-                else:
-                    if direction == 'SELL-SHORT':
-                        if bar_c == 'red':
-                            confidence += 0.2
-                        elif bar_c == 'yellow':
-                            confidence += 0.1
+                
                             
                 if rr >= 2:
                     confidence += 0.1
