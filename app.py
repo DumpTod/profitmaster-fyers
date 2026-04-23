@@ -158,7 +158,7 @@ if not token_data['access_token'] and token_data['refresh_token']:
     auto_refresh_access_token()
 
 # 🔥🔥🔥 CRITICAL FIX: ALWAYS initialize fyers (checks env vars too!)
-#init_fyers()  # ← ADD THIS LINE!
+
 
 
 def init_fyers():
