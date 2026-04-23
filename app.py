@@ -169,7 +169,6 @@ def init_fyers():
     
     try:
        def init_fyers():
-    """Initialize Fyers client and SET IT GLOBALLY"""
     global fyers_client, token_data
     
     if not token_data['access_token']:
@@ -187,13 +186,6 @@ def init_fyers():
             token=raw_token,
             log_path='/tmp'
         )
-        print(f"✅ Fyers client initialized at {datetime.now(IST).strftime('%H:%M:%S IST')}")
-        return fyers_client
-    except Exception as e:
-        print(f"✗ init_fyers error: {e}")
-        fyers_client = None
-        return None
-        
         print(f"✅ Fyers client initialized at {datetime.now(IST).strftime('%H:%M:%S IST')}")
         return fyers_client
     except Exception as e:
