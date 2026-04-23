@@ -164,11 +164,15 @@ if not token_data['access_token'] and token_data['refresh_token']:
 def init_fyers():
     global fyers_client, token_data
     
-    # Read from environment variable FIRST (Render env vars)
+    # NEW: Read from environment variable FIRST (Render env vars)
     env_token = os.environ.get('FYERS_ACCESS_TOKEN', '').strip()
     
     if env_token:
+        # Use environment token directly (no prefix needed - it's raw JWT)
         raw_token = env_token
+        # 🔥🔥🔥 CRITICAL: Also save to token_data so other routes know token exists!
+        token_data['access_token'] = f"{FYERS_APP_ID}:{env_token}"
+        token_data['token_time'] = datetime.now(IST).isoformat()
         print(f"🔑 Using ENVIRONMENT TOKEN (first 50 chars): {raw_token[:50]}...")
     
     elif token_data.get('access_token'):
