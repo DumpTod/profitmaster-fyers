@@ -159,24 +159,44 @@ if not token_data['access_token'] and token_data['refresh_token']:
 
 
 def init_fyers():
-    """FIX #3: Initialize Fyers client and SET IT GLOBALLY"""
     global fyers_client, token_data
-
-    if not token_data['access_token']:
-        print("init_fyers: No access token available")
+    
+    # NEW: Read from environment variable FIRST (Render env vars)
+    env_token = os.environ.get('FYERS_ACCESS_TOKEN', '').strip()
+    
+    if env_token:
+        # Use environment token directly (no prefix needed - it's raw JWT)
+        raw_token = env_token
+        print(f"🔑 Using ENVIRONMENT TOKEN (first 50 chars): {raw_token[:50]}...")
+    
+    elif token_data.get('access_token'):
+        # Fallback: Use saved token
+        raw_token = token_data['access_token']
+        # Strip "APP_ID:" prefix if present
+        if ':' in raw_token:
+            raw_token = raw_token.split(':', 1)[1]
+        print(f"🔑 Using SAVED TOKEN (first 50 chars): {raw_token[:50]}...")
+    
+    else:
+        print("✗ init_fyers: No access token available")
         fyers_client = None
         return None
-
+    
     try:
+        print(f"🔑 FINAL TOKEN BEING USED: {raw_token[:60]}...")
+        
         fyers_client = fyersModel.FyersModel(
             client_id=FYERS_APP_ID,
-            token=token_data['access_token'],
+            token=raw_token,
             log_path='/tmp'
         )
-        print(f"Fyers client initialized at {datetime.now(IST).strftime('%H:%M:%S IST')}")
+        print(f"✅ Fyers client initialized at {datetime.now(IST).strftime('%H:%M:%S IST')}")
         return fyers_client
+        
     except Exception as e:
-        print(f"init_fyers error: {e}")
+        print(f"✗ init_fyers error: {e}")
+        import traceback
+        traceback.print_exc()
         fyers_client = None
         return None
 
