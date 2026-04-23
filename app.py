@@ -168,8 +168,8 @@ def init_fyers():
         return None
     
     try:
-        def init_fyers():
-    """🔥 FIX #3: Initialize Fyers client and SET IT GLOBALLY"""
+       def init_fyers():
+    """Initialize Fyers client and SET IT GLOBALLY"""
     global fyers_client, token_data
     
     if not token_data['access_token']:
@@ -178,16 +178,13 @@ def init_fyers():
         return None
     
     try:
-        # 🔥🔥🔥 CRITICAL FIX: Strip "APP_ID:" prefix - SDK needs ONLY JWT
         raw_token = token_data['access_token']
         if ':' in raw_token:
             raw_token = raw_token.split(':', 1)[1]
         
-        print(f"🔑 Using token (first 30 chars): {raw_token[:30]}...")
-        
         fyers_client = fyersModel.FyersModel(
             client_id=FYERS_APP_ID,
-            token=raw_token,  # ✅ FIXED: Only JWT, no prefix
+            token=raw_token,
             log_path='/tmp'
         )
         print(f"✅ Fyers client initialized at {datetime.now(IST).strftime('%H:%M:%S IST')}")
