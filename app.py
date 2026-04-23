@@ -149,30 +149,30 @@ def auto_refresh_access_token():
         return False
 
 
-# Load tokens on startup
+# Load tokens from file (if available)
 load_token()
 
-# Auto-refresh on startup if needed
+# Auto-refresh if possible
 if not token_data['access_token'] and token_data['refresh_token']:
-    print("No access token found on startup, attempting auto-refresh...")
+    print("⟳ No access token found on startup, attempting auto-refresh...")
     auto_refresh_access_token()
+
+# 🔥🔥🔥 CRITICAL FIX: ALWAYS initialize fyers (checks env vars too!)
+init_fyers()  # ← ADD THIS LINE!
 
 
 def init_fyers():
     global fyers_client, token_data
     
-    # NEW: Read from environment variable FIRST (Render env vars)
+    # Read from environment variable FIRST (Render env vars)
     env_token = os.environ.get('FYERS_ACCESS_TOKEN', '').strip()
     
     if env_token:
-        # Use environment token directly (no prefix needed - it's raw JWT)
         raw_token = env_token
         print(f"🔑 Using ENVIRONMENT TOKEN (first 50 chars): {raw_token[:50]}...")
     
     elif token_data.get('access_token'):
-        # Fallback: Use saved token
         raw_token = token_data['access_token']
-        # Strip "APP_ID:" prefix if present
         if ':' in raw_token:
             raw_token = raw_token.split(':', 1)[1]
         print(f"🔑 Using SAVED TOKEN (first 50 chars): {raw_token[:50]}...")
@@ -201,9 +201,8 @@ def init_fyers():
         return None
 
 
-# Initialize client on startup if token exists
-if token_data['access_token']:
-    init_fyers()
+# 🔥🔥🔥 CALL IT HERE!
+init_fyers()
 
 
 # ========================================
