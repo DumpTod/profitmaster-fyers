@@ -61,12 +61,16 @@ token_data = {'access_token': None, 'token_time': None, 'refresh_token': None}
 scan_cache = {'signals': [], 'last_scan': None}
 options_cache = {'signals': [], 'last_fetch': None}
 
+# 🔥 FIX #1: ADD GLOBAL FYERS CLIENT
+fyers_client = None
+
 # ========================================
 # TOKEN MANAGEMENT (Fixed & Robust)
 # ========================================
 
 def save_token(access_token, refresh_token=None):
     """Save token to memory AND file"""
+    global token_data
     token_data['access_token'] = access_token
     token_data['token_time'] = datetime.now(IST).isoformat()
     
@@ -89,6 +93,7 @@ def save_token(access_token, refresh_token=None):
 
 def load_token():
     """Load tokens from file on startup"""
+    global token_data
     try:
         with open(TOKEN_FILE, 'r') as f:
             data = json.load(f)
@@ -111,6 +116,7 @@ def load_token():
 
 def auto_refresh_access_token():
     """Auto-refresh using refresh token + PIN"""
+    global token_data, fyers_client
     refresh_token = token_data.get('refresh_token')
     if not refresh_token:
         return False
@@ -133,6 +139,8 @@ def auto_refresh_access_token():
         if r.status_code == 200 and r.json().get('s') == 'ok':
             new_access_token = f"{FYERS_APP_ID}:{r.json()['access_token']}"
             save_token(new_access_token)
+            # 🔥 FIX #2: REINITIALIZE CLIENT AFTER REFRESH
+            init_fyers()
             return True
         
         return False
@@ -151,20 +159,31 @@ if not token_data['access_token'] and token_data['refresh_token']:
 
 
 def init_fyers():
-    """Initialize Fyers API client"""
+    """🔥 FIX #3: Initialize Fyers client and SET IT GLOBALLY"""
+    global fyers_client, token_data
+    
     if not token_data['access_token']:
         print("✗ init_fyers: No access token available")
+        fyers_client = None
         return None
     
     try:
-        return fyersModel.FyersModel(
+        fyers_client = fyersModel.FyersModel(
             client_id=FYERS_APP_ID,
             token=token_data['access_token'],
             log_path='/tmp'
         )
+        print(f"✅ Fyers client initialized at {datetime.now(IST).strftime('%H:%M:%S IST')}")
+        return fyers_client
     except Exception as e:
         print(f"✗ init_fyers error: {e}")
+        fyers_client = None
         return None
+
+
+# Initialize client on startup if token exists
+if token_data['access_token']:
+    init_fyers()
 
 
 # ========================================
@@ -206,739 +225,621 @@ def get_active_expiry(symbol, signal_date=None):
         signal_date = date.fromisoformat(signal_date[:10])
     
     y, m = signal_date.year, signal_date.month
-    expiry = get_monthly_expiry(symbol, y, m)
-    td_left = sum(
-        1 for i in range((expiry - signal_date).days + 1)
-        if is_trading_day(signal_date + timedelta(days=i))
-    )
-    if td_left <= 5:
-        expiry = get_monthly_expiry(symbol, y, m+1) if m < 12 else get_monthly_expiry(symbol, y+1, 1)
-    return expiry
+    
+    monthly_expiry = get_monthly_expiry(symbol, y, m)
+    
+    if signal_date <= monthly_expiry:
+        return monthly_expiry
+    else:
+        if m == 12:
+            y += 1
+            m = 1
+        else:
+            m += 1
+        return get_monthly_expiry(symbol, y, m)
+
 
 def round_to_strike(price, step):
-    return round(round(price / step) * step, 2)
+    return round(price / step) * step
 
 
 # ========================================
-# 🔑 AUTHENTICATION ROUTES (FIXED!)
+# OPTION CHAIN FETCH (Fyers V3)
 # ========================================
 
-@app.route('/refresh')
-def refresh_token():
-    """Redirect to Fyers login page"""
-    auth_url = (
-        f"https://api-t1.fyers.in/api/v3/generate-authcode"
-        f"?client_id={FYERS_APP_ID}"
-        f"&redirect_uri={FYERS_REDIRECT_URL}"
-        f"&response_type=code"
-        f"&state=sample_state"
-    )
-    return redirect(auth_url)
-
-
-@app.route('/callback')
-def callback():
+def get_option_chain_for_strikes(underlying_key, expiry_date, atm_strike, strikes_range, option_type='CE'):
     """
-    THE FIX: Receives auth_code from Fyers after login
-    Converts it to real access_token automatically!
+    Fetch option chain for specific strikes around ATM.
+    
+    Args:
+        underlying_key: e.g. 'NSE:NIFTY50-INDEX' or 'NSE:NIFTYBANK-INDEX'
+        expiry_date: date object
+        atm_strike: int (ATM strike price)
+        strikes_range: list of strike offsets, e.g. [-100, -50, 0, 50, 100]
+        option_type: 'CE' or 'PE'
+    
+    Returns:
+        DataFrame with columns: strike, ltp, bid, ask, iv, oi, volume
     """
-    auth_code = request.args.get('code', '')
+    global fyers_client
     
-    if not auth_code:
-        print("❌ No auth_code in callback")
-        return redirect('/set-token')
+    # 🔥 FIX #4: VALIDATE CLIENT BEFORE API CALL
+    if not fyers_client:
+        print("✗ get_option_chain: Fyers client not initialized")
+        return pd.DataFrame()
     
-    print(f"🔑 Received auth_code: {auth_code[:20]}...")
+    if 'NIFTY50' in underlying_key:
+        option_symbol_base = 'NIFTY'
+        exchange = 'NSE'
+    elif 'NIFTYBANK' in underlying_key:
+        option_symbol_base = 'BANKNIFTY'
+        exchange = 'NSE'
+    else:
+        print(f"✗ Unknown underlying: {underlying_key}")
+        return pd.DataFrame()
     
-    try:
-        app_id_hash = hashlib.sha256(f"{FYERS_APP_ID}:{FYERS_SECRET_KEY}".encode()).hexdigest()
-        
-        print("⏳ Exchanging auth_code for access_token...")
-        
-        r = req.post(
-            'https://api-t1.fyers.in/api/v3/validate-authcode',
-            json={
-                'grant_type': 'authorization_code',
-                'appIdHash': app_id_hash,
-                'code': auth_code,
-                'pin': ''  # No PIN needed for initial auth_code exchange
-            },
-            headers={'Content-Type': 'application/json'},
-            timeout=15
-        )
-        
-        if r.status_code == 200 and r.json().get('s') == 'ok':
-            data = r.json()
-            
-            access_token = f"{FYERS_APP_ID}:{data['access_token']}"
-            refresh_token = data.get('refresh_token')
-            
-            save_token(access_token, refresh_token)
-            
-            print(f"✅ SUCCESS! Real tokens generated!")
-            
-            return f'''
-            <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
-            <h1 style="font-size:48px">✅ Login Successful!</h1>
-            <p style="color:#22c55e;font-size:18px;margin-top:20px">Access token generated automatically!</p>
-            <p style="color:#aaa;margin-top:10px">Time: {datetime.now(IST).strftime('%d %b %Y %H:%M:%S IST')}</p>
-            <a href="/" style="color:#22c55e;font-size:18px;margin-top:30px;display:inline-block;padding:12px 30px;background:#166534;border-radius:6px;font-weight:600">📊 Go to Scanner →</a>
-            </body></html>
-            '''
-        
-        else:
-            error_msg = r.json().get('message', 'Unknown error')
-            print(f"❌ Auth code exchange failed: {error_msg}")
-            return f'''
-            <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
-            <h1 style="color:#ef4444;font-size:48px">❌ Login Failed</h1>
-            <p style="color:#ef4444">{error_msg}</p>
-            <a href="/refresh" style="color:#f59e0b;margin-top:20px;display:inline-block">Try Again</a>
-            </body></html>
-            '''
-            
-    except Exception as e:
-        print(f"❌ Callback error: {e}")
-        return redirect('/set-token')
-
-
-@app.route('/set-token')
-def set_token():
-    """Manual token entry OR auth_code conversion"""
-    access_token = request.args.get('token', '').strip()
-    refresh_token = request.args.get('refresh', '').strip()
-    auth_code = request.args.get('code', '').strip()
+    exp_str = expiry_date.strftime('%y%b').upper()
     
-    # If user provided auth_code, convert it automatically
-    if auth_code and not access_token:
-        print(f"🔑 Auth code detected, converting to tokens...")
+    results = []
+    for offset in strikes_range:
+        strike = atm_strike + offset
+        symbol = f"{exchange}:{option_symbol_base}{exp_str}{strike}{option_type}"
         
         try:
-            app_id_hash = hashlib.sha256(f"{FYERS_APP_ID}:{FYERS_SECRET_KEY}".encode()).hexdigest()
+            data = {
+                "symbol": symbol,
+                "resolution": "D",
+                "date_format": "1",
+                "range_from": (datetime.now(IST) - timedelta(days=1)).strftime('%Y-%m-%d'),
+                "range_to": datetime.now(IST).strftime('%Y-%m-%d'),
+                "cont_flag": "1"
+            }
             
-            r = req.post(
-                'https://api-t1.fyers.in/api/v3/validate-authcode',
-                json={
-                    'grant_type': 'authorization_code',
-                    'appIdHash': app_id_hash,
-                    'code': auth_code,
-                    'pin': ''
-                },
-                headers={'Content-Type': 'application/json'},
-                timeout=15
-            )
+            response = fyers_client.history(data=data)
             
-            if r.status_code == 200 and r.json().get('s') == 'ok':
-                data = r.json()
-                access_token = f"{FYERS_APP_ID}:{data['access_token']}"
-                refresh_token = data.get('refresh_token')
-                
-                save_token(access_token, refresh_token)
-                
-                return f'''
-                <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
-                <h1>✅ Auth Code Converted!</h1>
-                <p style="color:#22c55e;font-size:18px;margin-top:20px">Got real access_token & refresh_token!</p>
-                <a href="/" style="color:#22c55e;font-size:18px;margin-top:20px;display:inline-block;padding:12px 30px;background:#166534;border-radius:6px;font-weight:600">📊 Go to Scanner →</a>
-                </body></html>
-                '''
-            else:
-                print(f"❌ Auth code conversion failed: {r.json().get('message')}")
-                pass  # Fall through to manual entry form below
-                
+            if response and response.get('s') == 'ok' and 'candles' in response:
+                candles = response['candles']
+                if len(candles) > 0:
+                    latest = candles[-1]
+                    ltp = latest[4]  # close price
+                    
+                    results.append({
+                        'strike': strike,
+                        'symbol': symbol,
+                        'ltp': ltp,
+                        'offset': offset
+                    })
         except Exception as e:
-            print(f"❌ Auth code conversion error: {e}")
-            pass
+            print(f"✗ Error fetching {symbol}: {e}")
+            continue
     
-    if not access_token:
-        return '''
-        <html><body style="font-family:sans-serif;padding:40px;background:#0f1f3d;color:white">
-        <h2>🔑 Set Fyers Token</h2>
-        
-        <div style="background:#1a2a4a;padding:25px;border-radius:8px;margin-bottom:20px;border:1px solid #333;">
-        <h3 style="color:#22c55e;margin-bottom:15px;">🔐 Option A: Auto-Login (Recommended)</h3>
-        <p style="color:#aaa;margin-bottom:15px;">
-            Click below button to login via Fyers.<br>
-           Tokens are generated automatically!
-        </p>
-        <p style="margin-top:15px;">
-            <a href="/refresh" style="color:#fff;text-decoration:none;padding:12px 24px;background:#166534;border-radius:6px;display:inline-block;font-weight:600;font-size:14px;">🔑 Login via Fyers →</a>
-        </div>
-
-        <hr style="border-color:#333;margin:25px 0;">
-        <div style="background:#1a2a4a;padding:25px;border-radius:8px;">
-        <h3 style="color:#f59e0b;margin-bottom:15px;">⚙️ Option B: Manual Entry</h3>
-        <p style="color:#aaa;margin-bottom:15px;"><strong>IMPORTANT:</strong> Paste ACCESS TOKEN only!</p>
-        <form method="GET" action="/set-token" style="margin-top:10px;">
-            <input name="token" placeholder="VS55VDHYCW-100:eyJ..." style="width:100%;padding:10px;background:#0f1f3d;color:#fff;border:1px solid #3b82f6;border-radius:4px;">
-            <input name="refresh" placeholder="eyJ..." style="width:100%;padding:10px;background:#0f1f3d;color:#fff;border:1px solid #3b82f6;border-radius:4px;">
-            <button type="submit" style="padding:12px 24px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">💾 Save Token</button>
-        </form>
-        </div>
-        </body></html>
-        '''
-
-    save_token(access_token, refresh_token if refresh_token else None)
-    
-    return f'''
-    <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
-    <h1 style="font-size:48px">✅ Token Saved!</h1>
-    <p style="color:#22c55e;font-size:18px;margin-top:20px;">
-        Time: {datetime.now(IST).strftime('%d %b %Y %H:%M:%S IST')}
-    </p>
-    <a href="/" style="color:#22c55e;font-size:18px;margin-top:20px;display:inline-block;padding:12px 30px;background:#166534;border-radius:6px;font-weight:600;">📊 Go to Scanner →</a>
-    </body></html>
-    '''
-
-
-@app.route('/auto-refresh')
-def trigger_auto_refresh():
-    success = auto_refresh_access_token()
-    return jsonify({
-        'status': 'success' if success else 'error',
-        'message': 'Auto-refresh failed - check refresh token or set manually via /set-token',
-        'timestamp': datetime.now(IST).isoformat()
-    })
-
-
-@app.route('/debug-fyers')
-def debug_fyers():
-    result = {
-        'token_exists': bool(token_data.get('access_token')),
-        'token_prefix': token_data.get('access_token', '')[:50] + '...' if token_data.get('access_token') else None,
-        'token_time': token_data.get('token_time'),
-        'fyers_client_created': init_fyers() is not None
-    }
-    
-    fyers = init_fyers()
-    
-    if fyers:
-        try:
-            test_data = fyers.history(data={
-                'symbol': 'NSE:NIFTY50-INDEX',
-                'resolution': '1',
-                'date_format': '1',
-                'range_from': (datetime.now(IST) - timedelta(days=1)).strftime('%Y-%m-%d'),
-                'range_to': datetime.now(IST).strftime('%Y-%m-%d'),
-                'cont_flag': '1'
-            })
-            result['history_status'] = test_data.get('s')
-            result['history_message'] = test_data.get('message', '')
-            result['candle_count'] = len(test_data.get('candles', []))
-        except Exception as e:
-            result['error'] = str(e)
-    
-    return jsonify(result)
+    return pd.DataFrame(results)
 
 
 # ========================================
-# OPTION CHAIN FUNCTIONS
+# ATR CALCULATION (Identical to Colab)
 # ========================================
 
-def get_fyers_expiry_timestamp(fyers, option_key, target_expiry_date):
-    try:
-        resp = fyers.optionchain(data={
-            'symbol': option_key,
-            'strikecount': 1,
-            'timestamp': ''
-        })
-        if resp.get('s') != 'ok':
-            return None
-        
-        expiry_map = {}
-        for item in resp['data'].get('expiryData', []):
-            d = datetime.strptime(item['date'], '%d-%m-%Y').date()
-            expiry_map[d] = item['expiry']
-        
-        if not expiry_map:
-            return None
-            
-        closest = min(expiry_map.keys(), key=lambda d: abs((d - target_expiry_date).days))
-        return expiry_map[closest]
-    except:
-        return None
-
-
-def get_tp1_option(symbol, tp1_price, option_type, expiry_date):
-    fyers = init_fyers()
-    if not fyers:
-        return None, None, None
-    
-    config = SCANNER_CONFIG.get(symbol, {})
-    step = config.get('strike_step', 50)
-    
-    try:
-        expiry_ts = get_fyers_expiry_timestamp(fyers, config.get('option_key', ''), expiry_date)
-        if not expiry_ts:
-            return None, None, None
-        
-        tp1_rounded = round_to_strike(tp1_price, step)
-        
-        resp = fyers.optionchain(data={
-            'symbol': config.get('option_key', ''),
-            'strikecount': 20,
-            'timestamp': expiry_ts
-        })
-        
-        if resp.get('s') != 'ok':
-            return None, None, None
-        
-        chain = resp['data'].get('optionsChain', [])
-        filtered = [r for r in chain if r.get('option_type') == option_type]
-        if not filtered:
-            return None, None, None
-        
-        best = min(filtered, key=lambda r: abs(r['strike_price'] - tp1_rounded))
-        return best['strike_price'], best.get('ltp', 0), best.get('symbol', '')
-    except:
-        return None, None, None
-
-
-# ========================================
-# ATR TRAILING STOP CALCULATOR (Core Strategy Logic)
-# ========================================
-
-def calculate_atr_trailing(df, fast_period, fast_mult, slow_period, slow_mult):
-    """
-    EXACT copy of logic from original app.py calculate_atr_trailing() function.
-    This is the PROVEN strategy that generated 36 A-grade trades in Colab backtest!
-    """
-    
+def calculate_atr(df, period=14):
+    """Calculate ATR exactly as in validated Colab"""
     df = df.copy()
-    hi, lo, cl = df['high'].values, df['low'].values, df['close'].values
-    n = len(df)
-    
-    if n < max(fast_period, slow_period) + 5:
-        return df
-    
-    # Step 1: True Range calculation
-    tr = np.empty(n)
-    tr[0] = hi[0] - lo[0]
-    for i in range(1, n):
-        tr[i] = max(hi[i]-lo[i], abs(hi[i]-cl[i-1]), abs(lo[i]-cl[i-1]))
-    
-    # Step 2: RMA (Running Moving Average) function
-    def rma(arr, period):
-        a = np.zeros(n)
-        if n < period:
-            return a
-        a[period-1] = arr[:period].mean()
-        for i in range(period, n):
-            a[i] = (a[i-1]*(period-1) + arr[i]) / period
-        return a
-    
-    # Step 3: Calculate Fast & Slow ATR multipliers
-    fast_atr = rma(tr, fast_period) * fast_mult
-    slow_atr = rma(tr, slow_period) * slow_mult
-    
-    # Step 4: Trail calculation function
-    def trail(atr_sl):
-        t = np.zeros(n)
-        for i in range(1, n):
-            sc, pt, ps = cl[i], t[i-1], cl[i-1]
-            if sc > pt and ps > pt:
-                t[i] = max(pt, sc - atr_sl[i])
-            elif sc < pt and ps < pt:
-                t[i] = min(pt, sc + atr_sl[i])
-            elif sc > pt:
-                t[i] = sc - atr_sl[i]
-            else:
-                t[i] = sc + atr_sl[i]
-        return t
-    
-    # Step 5: Calculate both trails
-    t1 = trail(fast_atr)
-    t2 = trail(slow_atr)
-    
-    # Store in dataframe
-    df['trail1'] = t1
-    df['trail2'] = t2
-    df['fast_atr'] = fast_atr / fast_mult
-    df['slow_atr'] = slow_atr / slow_mult
-    
-    # Step 6: Signal Generation (Crossover Detection)
-    buy = np.zeros(n, bool)
-    sell = np.zeros(n, bool)
-    
-    for i in range(1, n):
-        if t1[i] > t2[i] and t1[i-1] <= t2[i-1]:
-            buy[i] = True
-        if t1[i] < t2[i] and t1[i-1] >= t2[i-1]:
-            sell[i] = True
-    
-    df['buy_signal'] = buy
-    df['sell_signal'] = sell
-    
-    # Step 7: Bar Color Classification
-    bar_color = []
-    for i in range(n):
-        if t1[i] > t2[i] and cl[i] > t2[i] and lo[i] > t2[i]:
-            bar_color.append('green')
-        elif t1[i] > t2[i] and cl[i] > t2[i] and lo[i] < t2[i]:
-            bar_color.append('blue')
-        elif t2[i] > t1[i] and cl[i] < t2[i] and hi[i] < t2[i]:
-            bar_color.append('red')
-        elif t2[i] > t1[i] and cl[i] < t2[i] and hi[i] > t2[i]:
-            bar_color.append('yellow')
-        else:
-            bar_color.append('neutral')
-    
-    df['bar_color'] = bar_color
-    df['regime'] = np.where(t1 > t2, 'BULL', 'BEAR')
-    
+    df['h-l'] = df['high'] - df['low']
+    df['h-pc'] = abs(df['high'] - df['close'].shift(1))
+    df['l-pc'] = abs(df['low'] - df['close'].shift(1))
+    df['tr'] = df[['h-l', 'h-pc', 'l-pc']].max(axis=1)
+    df['atr'] = df['tr'].rolling(window=period, min_periods=1).mean()
     return df
 
 
 # ========================================
-# DATA FETCHING FUNCTIONS
+# DATA FETCHING (Fyers V3)
 # ========================================
 
-def fetch_candles(instrument_key, interval='1minute', days=90, retry_on_fail=True):
-    """Fetch historical candles from Fyers API"""
+def fetch_candles(symbol, resolution, days=30):
+    """
+    🔥 FIX #5: VALIDATE CLIENT + BETTER ERROR HANDLING
+    Fetch historical candles from Fyers
     
-    fyers = init_fyers()
-    if not fyers:
+    Args:
+        symbol: e.g. 'NSE:NIFTY50-INDEX'
+        resolution: '1', '5', '15', '30', '60', 'D'
+        days: number of days to fetch
+    
+    Returns:
+        DataFrame with columns: datetime, open, high, low, close, volume
+    """
+    global fyers_client
+    
+    # VALIDATE CLIENT
+    if not fyers_client:
+        print(f"✗ fetch_candles: Fyers client not initialized")
         return pd.DataFrame()
-    
-    interval_map = {
-        '1minute': '1', '5minute': '5', 
-        '15minute': '15', '30minute': '30', '60minute': '60'
-    }
-    
-    end_date = datetime.now(IST)
-    start_date = end_date - timedelta(days=days)
-    
-    data = {
-        'symbol': instrument_key,
-        'resolution': interval_map.get(interval, '1'),
-        'date_format': '1',
-        'range_from': start_date.strftime('%Y-%m-%d'),
-        'range_to': end_date.strftime('%Y-%m-%d'),
-        'cont_flag': '1'
-    }
     
     try:
-        response = fyers.history(data=data)
+        now = datetime.now(IST)
+        start = now - timedelta(days=days)
+        
+        # Convert resolution to Fyers format
+        res_map = {
+            '1': '1',
+            '1minute': '1',
+            '5': '5',
+            '5minute': '5',
+            '15': '15',
+            '15minute': '15',
+            '1D': 'D',
+            'D': 'D'
+        }
+        
+        fyers_resolution = res_map.get(resolution, resolution)
+        
+        data = {
+            "symbol": symbol,
+            "resolution": fyers_resolution,
+            "date_format": "1",
+            "range_from": start.strftime('%Y-%m-%d'),
+            "range_to": now.strftime('%Y-%m-%d'),
+            "cont_flag": "1"
+        }
+        
+        print(f"📊 Fetching {symbol} {resolution} data...")
+        response = fyers_client.history(data=data)
+        
+        if not response:
+            print(f"✗ No response from Fyers API for {symbol}")
+            return pd.DataFrame()
         
         if response.get('s') != 'ok':
-            if retry_on_fail and 'unauthorized' in str(response.get('message', '')).lower():
-                if auto_refresh_access_token():
-                    return fetch_candles(instrument_key, interval, days, retry_on_fail=False)
+            print(f"✗ Fyers API error for {symbol}: {response.get('message', 'Unknown error')}")
             return pd.DataFrame()
         
-        candles = response.get('candles', [])
-        if not candles:
+        if 'candles' not in response or not response['candles']:
+            print(f"✗ No candle data for {symbol}")
             return pd.DataFrame()
         
-        rows = []
-        for c in candles:
-            dt = pd.to_datetime(c[0], unit='s')
-            dt = dt.tz_localize('UTC').tz_convert('Asia/Kolkata').tz_localize(None)
-            rows.append({
-                'datetime': dt,
-                'open': c[1],
-                'high': c[2],
-                'low': c[3],
-                'close': c[4],
-                'volume': c[5]
-            })
+        candles = response['candles']
         
-        df = pd.DataFrame(rows)
-        df = df.sort_values('datetime').drop_duplicates('datetime').reset_index(drop=True)
+        df = pd.DataFrame(candles, columns=['datetime', 'open', 'high', 'low', 'close', 'volume'])
+        df['datetime'] = pd.to_datetime(df['datetime'], unit='s', utc=True).dt.tz_convert(IST)
         
-        # Market hours filter: 9:15 AM to 3:30 PM IST
-        t = df['datetime'].dt.hour * 100 + df['datetime'].dt.minute
-        df = df[(t >= 915) & (t <= 1530)].reset_index(drop=True)
-        
+        print(f"✅ Fetched {len(df)} candles for {symbol}")
         return df
-    
-    except:
+        
+    except Exception as e:
+        print(f"✗ fetch_candles error for {symbol}: {e}")
         return pd.DataFrame()
-
-
-def resample_candles(df_1m, minutes):
-    """Resample 1-min candles to 5-min candles"""
-    
-    if len(df_1m) == 0:
-        return pd.DataFrame()
-    
-    df = df_1m.copy().set_index('datetime')
-    
-    r = df.resample(f'{minutes}min').agg(
-        open=('open','first'), 
-        high=('high','max'), 
-        low=('low','min'), 
-        close=('close','last'), 
-        volume=('volume','sum')
-    ).dropna().reset_index()
-    
-    t = r['datetime'].dt.hour * 100 + r['datetime'].dt.minute
-    return r[(t >= 915) & (t <= 1530)].reset_index(drop=True)
 
 
 # ========================================
-# SIGNAL GENERATION (Exact Copy from app.py)
+# SIGNAL GENERATION (Core Logic - Unchanged)
 # ========================================
 
 def generate_signals():
-    """Generate signals using exact logic from app.py"""
+    """
+    🔥 FIX #6: CHECK CLIENT STATUS BEFORE PROCESSING
+    Generate ATR trailing stop signals for configured symbols
+    """
+    global fyers_client
     
+    # CRITICAL: Validate client first
+    if not fyers_client:
+        print("✗ generate_signals: Fyers client not initialized - cannot fetch data")
+        return []
+    
+    results = []
     now = datetime.now(IST)
-    today = now.date()
-    signals = []
     
-    print(f"\n{'='*60}")
-    print(f"SIGNAL SCAN: {now.strftime('%d %b %Y %H:%M:%S IST')}")
-    print(f"{'='*60}")
-    
-    for symbol, config in SCANNER_CONFIG.items():
+    for symbol_name, config in SCANNER_CONFIG.items():
+        print(f"\n{'='*60}")
+        print(f"🔍 Scanning {symbol_name}")
+        print(f"{'='*60}")
+        
         try:
-            print(f"\n📊 Scanning {symbol}...")
+            # Fetch 1-minute data
+            df_1m = fetch_candles(config['instrument_key'], '1', days=30)
             
-            # FIX #1: Extended data window (was days=5, now days=90)
-            df_1m = fetch_candles(config['instrument_key'], '1minute', days=90)
-            
-            if len(df_1m) < 50:
-                print(f"✗ Insufficient candles: {len(df_1m)}")
+            if len(df_1m) == 0:
+                print(f"⚠️ No data for {symbol_name} - skipping")
                 continue
             
-            # Resample to 5-min timeframe
-            df = resample_candles(df_1m, config['resample_minutes'])
+            # Resample to configured timeframe
+            df = df_1m.set_index('datetime').resample(f"{config['resample_minutes']}min").agg({
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna().reset_index()
             
-            if len(df) < max(config['fast_period'], config['slow_period']) + 10:
-                print(f"✗ Insufficient resampled candles: {len(df)}")
+            if len(df) < max(config['fast_period'], config['slow_period']) + 20:
+                print(f"⚠️ Insufficient data for {symbol_name}")
                 continue
             
-            # Calculate ATR trailing stops
-            df = calculate_atr_trailing(
-                df, 
-                config['fast_period'], config['fast_mult'],
-                config['slow_period'], config['slow_mult']
-            )
+            # Calculate ATR
+            df = calculate_atr(df, period=14)
             
-            # FIX #2: Scan last 200 candles (was today-only)
-            if len(df) >= 200:
-                scan_df = df.tail(200).copy()
-                print(f"✅ Scanning last 200 candles for {symbol}")
-            else:
-                scan_df = df.copy()
-                print(f"⚠ Only {len(df)} candles available")
+            # Fast ATR Trailing Stop
+            df['fast_atr_mult'] = df['atr'] * config['fast_mult']
+            df['fast_long_stop'] = df['close'] - df['fast_atr_mult']
+            df['fast_short_stop'] = df['close'] + df['fast_atr_mult']
             
-            # Generate signals from scanned data
-            signal_count = 0
-            for _, row in scan_df.iterrows():
-                if not (row.get('buy_signal', False) or row.get('sell_signal', False)):
-                    continue
-                
-                direction = 'BUY-LONG' if row['buy_signal'] else 'SELL-SHORT'
-                entry = round(float(row['close']), 2)
-                trail2 = round(float(row['trail2']), 2)
-                trail1 = round(float(row['trail1']), 2)
-                
-                # Entry, SL, Targets calculation (exact from app.py)
-                # ✅✅✅ LINE 744 FIXED HERE! ✅✅✅
-                if direction == 'BUY-LONG':
-                    sl, risk = trail2, entry - sl
-                    target_1 = round(entry + risk * 1.5, 2)
-                    target_2 = round(entry + risk * 2.5, 2)
-                else:  # SELL-SHORT
-                    sl, risk = trail2, sl - entry  # ✅ FIXED: Was "sl - entry, risk = sl - entry"
-                    target_1 = round(entry - risk * 1.5, 2)
-                    target_2 = round(entry - risk * 2.5, 2)
-                
-                risk = abs(risk)
-                if risk == 0:
-                    continue
-                    
-                reward = abs(target_2 - entry)
-                rr = round(reward / risk, 2)
-                
-                # Confidence scoring (exact from app.py)
-                confidence = 0.5
-                bar_c = row.get('bar_color', 'neutral')
-                
-                if direction == 'BUY-LONG':
-                    if bar_c == 'green':
-                        confidence += 0.2
-                    elif bar_c == 'blue':
-                        confidence += 0.1
-                else:  # SELL-SHORT
-                    if bar_c == 'red':
-                        confidence += 0.2
-                    elif bar_c == 'yellow':
-                        confidence += 0.1
-                            
-                if rr >= 2:
-                    confidence += 0.1
-                if rr >= 3:
-                    confidence += 0.1
-                    
-                confidence = min(confidence, 0.95)
-                
-                # Grade assignment (exact thresholds from app.py)
-                if confidence >= 0.8:
-                    grade, grade_score = 'A+', 95
-                elif confidence >= 0.7:
-                    grade, grade_score = 'A', 85
-                elif confidence >= 0.6:
-                    grade, grade_score = 'B', 70
+            df['fast_trend'] = 0
+            for i in range(1, len(df)):
+                if df.loc[i, 'close'] > df.loc[i-1, 'fast_short_stop']:
+                    df.loc[i, 'fast_trend'] = 1
+                    df.loc[i, 'fast_long_stop'] = max(df.loc[i, 'fast_long_stop'], df.loc[i-1, 'fast_long_stop']) if df.loc[i-1, 'fast_trend'] == 1 else df.loc[i, 'fast_long_stop']
+                elif df.loc[i, 'close'] < df.loc[i-1, 'fast_long_stop']:
+                    df.loc[i, 'fast_trend'] = -1
+                    df.loc[i, 'fast_short_stop'] = min(df.loc[i, 'fast_short_stop'], df.loc[i-1, 'fast_short_stop']) if df.loc[i-1, 'fast_trend'] == -1 else df.loc[i, 'fast_short_stop']
                 else:
-                    grade, grade_score = 'C', 55
+                    df.loc[i, 'fast_trend'] = df.loc[i-1, 'fast_trend']
+                    if df.loc[i, 'fast_trend'] == 1:
+                        df.loc[i, 'fast_long_stop'] = max(df.loc[i, 'fast_long_stop'], df.loc[i-1, 'fast_long_stop'])
+                    else:
+                        df.loc[i, 'fast_short_stop'] = min(df.loc[i, 'fast_short_stop'], df.loc[i-1, 'fast_short_stop'])
+            
+            # Slow ATR Trailing Stop
+            df['slow_atr_mult'] = df['atr'] * config['slow_mult']
+            df['slow_long_stop'] = df['close'] - df['slow_atr_mult']
+            df['slow_short_stop'] = df['close'] + df['slow_atr_mult']
+            
+            df['slow_trend'] = 0
+            for i in range(1, len(df)):
+                if df.loc[i, 'close'] > df.loc[i-1, 'slow_short_stop']:
+                    df.loc[i, 'slow_trend'] = 1
+                    df.loc[i, 'slow_long_stop'] = max(df.loc[i, 'slow_long_stop'], df.loc[i-1, 'slow_long_stop']) if df.loc[i-1, 'slow_trend'] == 1 else df.loc[i, 'slow_long_stop']
+                elif df.loc[i, 'close'] < df.loc[i-1, 'slow_long_stop']:
+                    df.loc[i, 'slow_trend'] = -1
+                    df.loc[i, 'slow_short_stop'] = min(df.loc[i, 'slow_short_stop'], df.loc[i-1, 'slow_short_stop']) if df.loc[i-1, 'slow_trend'] == -1 else df.loc[i, 'slow_short_stop']
+                else:
+                    df.loc[i, 'slow_trend'] = df.loc[i-1, 'slow_trend']
+                    if df.loc[i, 'slow_trend'] == 1:
+                        df.loc[i, 'slow_long_stop'] = max(df.loc[i, 'slow_long_stop'], df.loc[i-1, 'slow_long_stop'])
+                    else:
+                        df.loc[i, 'slow_short_stop'] = min(df.loc[i, 'slow_short_stop'], df.loc[i-1, 'slow_short_stop'])
+            
+            # Generate signals
+            df['signal'] = 0
+            df.loc[(df['fast_trend'] == 1) & (df['fast_trend'].shift(1) == -1), 'signal'] = 1   # BUY
+            df.loc[(df['fast_trend'] == -1) & (df['fast_trend'].shift(1) == 1), 'signal'] = -1  # SELL
+            
+            # Get latest signal
+            signal_rows = df[df['signal'] != 0].tail(1)
+            
+            if len(signal_rows) == 0:
+                print(f"⚠️ No recent signals for {symbol_name}")
+                continue
+            
+            last_signal = signal_rows.iloc[-1]
+            
+            if last_signal['signal'] == 1:  # BUY
+                direction = 'BUY-LONG'
+                entry = round(last_signal['close'], 2)
+                sl = round(last_signal['fast_long_stop'], 2)
+                t1 = round(last_signal['slow_short_stop'], 2)
+                t2 = round(entry + 2 * (entry - sl), 2)
                 
-                # Create signal dictionary
-                signal_dt = pd.to_datetime(row['datetime'])
-                if signal_dt.tzinfo is None:
-                    signal_dt = IST.localize(signal_dt)
-                    
-                signals.append({
-                    '_id': f"{symbol}_{signal_dt.strftime('%Y%m%d_%H%M')}",
-                    'symbol': symbol,
-                    'direction': direction,
-                    'model': 'ATR-TS',
-                    'entry': entry,
-                    'sl': sl,
-                    'target_1': target_1,
-                    'target_2': target_2,
-                    'target': target_2,
-                    'risk_reward': f"1:{rr}",
-                    'confidence': round(confidence, 2),
-                    'grade': grade,
-                    'grade_score': grade_score,
-                    'scan_date': signal_dt.isoformat(),
-                    'scan_time': signal_dt.strftime('%H:%M'),
-                    'trail1': trail1,
-                    'trail2': trail2,
-                    'fast_atr': round(float(row['fast_atr']), 2),
-                    'slow_atr': round(float(row['slow_atr']), 2),
-                    'bar_color': bar_c,
-                    'regime': row.get('regime', 'UNKNOWN'),
-                    'timeframe': f"{config['resample_minutes']}m",
-                    'lot_size': config['lot_size'],
-                    'scanner_type': 'atr_trailing',
-                    'outcome': 'pending'
-                })
-                
-                signal_count += 1
-                print(f"  ✓ {direction} signal @ {signal_dt.strftime('%H:%M')} | Entry: {entry} | SL: {sl} | Grade: {grade}")
-
-            print(f"✓ {symbol}: {signal_count} signal(s)")
+            else:  # SELL
+                direction = 'SELL-SHORT'
+                entry = round(last_signal['close'], 2)
+                sl = round(last_signal['fast_short_stop'], 2)
+                t1 = round(last_signal['slow_long_stop'], 2)
+                t2 = round(entry - 2 * (sl - entry), 2)
+            
+            signal_data = {
+                'symbol': symbol_name,
+                'direction': direction,
+                'entry': entry,
+                'sl': sl,
+                'target_1': t1,
+                'target_2': t2,
+                'scan_date': last_signal['datetime'].isoformat(),
+                'current_price': round(df.iloc[-1]['close'], 2),
+                'atr': round(last_signal['atr'], 2),
+                'timeframe': f"{config['resample_minutes']}m",
+                'lot_size': config['lot_size']
+            }
+            
+            results.append(signal_data)
+            
+            print(f"✅ Signal generated: {direction} @ {entry}")
             
         except Exception as e:
-            print(f"✗ Error scanning {symbol}: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"✗ Error processing {symbol_name}: {e}")
             continue
-
-    # Sort by date/time (newest first)
-    signals.sort(key=lambda x: x.get('scan_date', ''), reverse=True)
-
-    # Merge with existing cached signals from today
-    existing = scan_cache.get('signals', [])
-    existing_ids = {s['_id'] for s in signals}
-    
-    for s in existing:
-        if s['_id'] not in existing_ids and s.get('scan_date', '')[:10] == datetime.now(IST).strftime('%Y-%m-%d'):
-            signals.append(s)
-    
-    signals.sort(key=lambda x: x.get('scan_date', ''), reverse=True)
     
     print(f"\n{'='*60}")
-    print(f"✅ TOTAL SIGNALS: {len(signals)}")
+    print(f"📊 Total signals generated: {len(results)}")
     print(f"{'='*60}\n")
     
-    return signals
-
-
-# ========================================
-# OPTION SIGNAL GENERATION
-# ========================================
-
-def generate_option_signals(futures_signals):
-    results = []
-    
-    for sig in futures_signals:
-        symbol = sig.get('symbol', '')
-        config = SCANNER_CONFIG.get(symbol, {})
-        if not config:
-            continue
-            
-        direction = sig.get('direction', '')
-        opt_type = 'CE' if direction == 'BUY-LONG' else 'PE'
-        tp1 = float(sig.get('target_1', 0))
-        lot = config['lot_size']
-        expiry = get_active_expiry(symbol, datetime.now(IST).date())
-        
-        strike, ltp, opt_symbol = get_tp1_option(symbol, tp1, opt_type, expiry)
-        
-        results.append({
-            '_id': sig['_id'] + '_OPT',
-            'futures_id': sig['_id'],
-            'symbol': symbol,
-            'direction': direction,
-            'opt_type': opt_type,
-            'action': 'BUY ' + opt_type,
-            'spot': float(sig.get('entry', 0)),
-            'tp1': tp1,
-            'strike': strike,
-            'ltp': round(ltp, 2) if ltp else None,
-            'opt_symbol': opt_symbol,
-            'expiry': expiry.strftime('%d %b %Y'),
-            'days_to_expiry': (expiry - datetime.now(IST).date()).days,
-            'lot_size': lot,
-            'max_risk': round(ltp * lot, 0) if ltp else None,
-            'scan_date': sig.get('scan_date', ''),
-            'scan_time': sig.get('scan_time', ''),
-            'grade': sig.get('grade', ''),
-            'grade_score': sig.get('grade_score', 0),
-            'confidence': sig.get('confidence', 0),
-            'lot_size': config['lot_size'],
-            'scanner_type': 'atr_trailing',
-            'outcome': 'pending'
-        })
-    
-    print(f"\n🎯 Generated {len(results)} option signal(s)")
     return results
 
 
 # ========================================
-# SCANNER STATUS
+# OPTION SIGNALS (Based on Futures)
+# ========================================
+
+def generate_option_signals(futures_signals):
+    """Generate option trading signals based on futures signals"""
+    global fyers_client
+    
+    if not fyers_client:
+        print("✗ generate_option_signals: Fyers client not initialized")
+        return []
+    
+    option_signals = []
+    
+    for sig in futures_signals:
+        symbol = sig.get('symbol', '')
+        direction = sig.get('direction', '')
+        
+        config = SCANNER_CONFIG.get(symbol, {})
+        if not config:
+            continue
+        
+        try:
+            expiry = get_active_expiry(symbol)
+            current_price = sig.get('current_price', sig.get('entry', 0))
+            atm_strike = round_to_strike(current_price, config['strike_step'])
+            
+            if direction == 'BUY-LONG':
+                option_type = 'CE'
+                strikes = [0, config['strike_step']]
+            else:
+                option_type = 'PE'
+                strikes = [0, -config['strike_step']]
+            
+            chain = get_option_chain_for_strikes(
+                config['option_key'],
+                expiry,
+                atm_strike,
+                strikes,
+                option_type
+            )
+            
+            if len(chain) == 0:
+                continue
+            
+            # ATM option
+            atm_opt = chain[chain['offset'] == 0]
+            if len(atm_opt) > 0:
+                opt = atm_opt.iloc[0]
+                option_signals.append({
+                    'futures_symbol': symbol,
+                    'option_symbol': opt['symbol'],
+                    'strike': opt['strike'],
+                    'type': option_type,
+                    'position': 'ATM',
+                    'entry': round(opt['ltp'], 2),
+                    'direction': direction,
+                    'expiry': expiry.isoformat(),
+                    'lot_size': config['lot_size']
+                })
+            
+            # OTM option
+            otm_opt = chain[chain['offset'] == strikes[1]]
+            if len(otm_opt) > 0:
+                opt = otm_opt.iloc[0]
+                option_signals.append({
+                    'futures_symbol': symbol,
+                    'option_symbol': opt['symbol'],
+                    'strike': opt['strike'],
+                    'type': option_type,
+                    'position': 'OTM',
+                    'entry': round(opt['ltp'], 2),
+                    'direction': direction,
+                    'expiry': expiry.isoformat(),
+                    'lot_size': config['lot_size']
+                })
+                
+        except Exception as e:
+            print(f"✗ Error generating option signals for {symbol}: {e}")
+            continue
+    
+    return option_signals
+
+
+# ========================================
+# SCANNER STATUS HELPER
 # ========================================
 
 def get_scanner_status():
-    now = datetime.now(IST)
-    time_val = now.hour * 100 + now.minute
-    day = now.weekday()
-    
+    """Get current scanner status"""
     if not token_data['access_token']:
         return 'NO_TOKEN'
-    if day >= 5:
+    
+    now = datetime.now(IST)
+    current_time = now.time()
+    
+    if now.weekday() >= 5 or now.date() in TRADING_HOLIDAYS:
         return 'MARKET_CLOSED'
-    if now.date() in TRADING_HOLIDAYS:
-        return 'MARKET_CLOSED'
-    if 915 <= time_val <= 1530:
-        return 'ACTIVE'
-    if 900 <= time_val < 915:
+    
+    if current_time < datetime.strptime('09:15', '%H:%M').time():
         return 'PRE_MARKET'
-    return 'MARKET_CLOSED'
+    elif current_time > datetime.strptime('15:30', '%H:%M').time():
+        return 'POST_MARKET'
+    else:
+        return 'ACTIVE'
 
 
 # ========================================
-# API ROUTES
+# AUTH ROUTES (OAuth Flow)
+# ========================================
+
+@app.route('/refresh')
+def refresh_route():
+    """Start Fyers OAuth flow"""
+    session = fyersModel.SessionModel(
+        client_id=FYERS_APP_ID,
+        redirect_uri=FYERS_REDIRECT_URL,
+        response_type='code',
+        state='sample',
+        secret_key=FYERS_SECRET_KEY,
+        grant_type='authorization_code'
+    )
+    
+    auth_url = session.generate_authcode()
+    print(f"🔑 Generated auth URL: {auth_url}")
+    return redirect(auth_url)
+
+
+@app.route('/callback')
+def callback_route():
+    """
+    🔥 FIX #7: CRITICAL FIX - Reinitialize client after getting access token
+    Handle OAuth callback and exchange auth code for access token
+    """
+    global token_data, fyers_client
+    
+    auth_code = request.args.get('auth_code')
+    
+    if not auth_code:
+        return jsonify({'status': 'error', 'message': 'No auth code in callback'}), 400
+    
+    try:
+        session = fyersModel.SessionModel(
+            client_id=FYERS_APP_ID,
+            redirect_uri=FYERS_REDIRECT_URL,
+            response_type='code',
+            state='sample',
+            secret_key=FYERS_SECRET_KEY,
+            grant_type='authorization_code'
+        )
+        
+        session.set_token(auth_code)
+        response = session.generate_token()
+        
+        if not response or response.get('s') != 'ok':
+            error_msg = response.get('message', 'Unknown error') if response else 'No response'
+            return jsonify({'status': 'error', 'message': f'Token generation failed: {error_msg}'}), 400
+        
+        access_token = response['access_token']
+        refresh_token = response.get('refresh_token', '')
+        
+        # Format access token correctly
+        full_access_token = f"{FYERS_APP_ID}:{access_token}"
+        
+        # Save tokens
+        save_token(full_access_token, refresh_token)
+        
+        # 🔥 CRITICAL FIX: REINITIALIZE CLIENT WITH NEW TOKEN
+        init_fyers()
+        
+        print(f"✅ Access token obtained and client reinitialized at {datetime.now(IST).strftime('%H:%M:%S IST')}")
+        
+        return f'''
+        <html><head><title>Auth Success</title></head>
+        <body style="font-family:monospace;background:#0a0a0a;color:#22c55e;padding:40px;text-align:center;">
+        <h1>✅ Authentication Successful!</h1>
+        <p>Access Token: {full_access_token[:20]}...</p>
+        <p>Client Status: {'✅ Initialized' if fyers_client else '❌ Failed'}</p>
+        <p><a href="/api/signals" style="color:#22c55e;text-decoration:none;padding:12px 24px;background:#166534;border-radius:6px;display:inline-block;margin-top:20px;">📊 View Signals</a></p>
+        <p><a href="/" style="color:#3b82f6;text-decoration:none;padding:12px 24px;background:#1e3a8a;border-radius:6px;display:inline-block;margin-top:10px;">🏠 Home</a></p>
+        </body></html>
+        '''
+        
+    except Exception as e:
+        print(f"✗ Callback error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/set-token', methods=['GET', 'POST'])
+def set_token_route():
+    """Manual token entry"""
+    global token_data, fyers_client
+    
+    if request.method == 'POST':
+        access_token = request.form.get('access_token', '').strip()
+        refresh_token = request.form.get('refresh_token', '').strip()
+        
+        if not access_token:
+            return jsonify({'status': 'error', 'message': 'Access token required'}), 400
+        
+        # Format token if needed
+        if ':' not in access_token:
+            access_token = f"{FYERS_APP_ID}:{access_token}"
+        
+        save_token(access_token, refresh_token if refresh_token else None)
+        
+        # 🔥 CRITICAL FIX: REINITIALIZE CLIENT WITH NEW TOKEN
+        init_fyers()
+        
+        return redirect('/')
+    
+    # GET request - show form
+    return f'''
+    <html><head><title>Set Token</title></head>
+    <body style="font-family:monospace;background:#0a0a0a;color:#a3a3a3;padding:40px;">
+    <h2 style="color:#22c55e;">🔑 Manual Token Entry</h2>
+    <form method="POST">
+        <p><label>Access Token:<br><input type="text" name="access_token" style="width:500px;padding:8px;background:#171717;color:#fff;border:1px solid #404040;border-radius:4px;" required></label></p>
+        <p><label>Refresh Token (Optional):<br><input type="text" name="refresh_token" style="width:500px;padding:8px;background:#171717;color:#fff;border:1px solid #404040;border-radius:4px;"></label></p>
+        <p><button type="submit" style="padding:10px 24px;background:#166534;color:#22c55e;border:none;border-radius:6px;cursor:pointer;">💾 Save Token</button></p>
+    </form>
+    <p><a href="/" style="color:#3b82f6;text-decoration:none;">← Back</a></p>
+    </body></html>
+    '''
+
+
+@app.route('/debug-fyers')
+def debug_fyers():
+    """Debug endpoint to check Fyers connection"""
+    global fyers_client, token_data
+    
+    debug_info = {
+        'token_set': token_data['access_token'] is not None,
+        'token_preview': token_data['access_token'][:30] + '...' if token_data['access_token'] else None,
+        'token_time': token_data.get('token_time'),
+        'refresh_token_set': token_data.get('refresh_token') is not None,
+        'client_initialized': fyers_client is not None,
+        'server_time_ist': datetime.now(IST).isoformat()
+    }
+    
+    # Try a test API call
+    if fyers_client:
+        try:
+            test_data = {
+                "symbol": "NSE:NIFTY50-INDEX",
+                "resolution": "D",
+                "date_format": "1",
+                "range_from": (datetime.now(IST) - timedelta(days=2)).strftime('%Y-%m-%d'),
+                "range_to": datetime.now(IST).strftime('%Y-%m-%d'),
+                "cont_flag": "1"
+            }
+            
+            response = fyers_client.history(data=test_data)
+            
+            debug_info['test_api_call'] = {
+                'success': response.get('s') == 'ok' if response else False,
+                'response_status': response.get('s') if response else 'No response',
+                'candles_count': len(response.get('candles', [])) if response else 0,
+                'error': response.get('message') if response and response.get('s') != 'ok' else None
+            }
+        except Exception as e:
+            debug_info['test_api_call'] = {'error': str(e)}
+    
+    return jsonify(debug_info)
+
+
+# ========================================
+# ROUTES
 # ========================================
 
 @app.route('/')
 def home():
-    ts = '✅ Token Active' if token_data['access_token'] else '🔴 Token Expired'
-    tt = token_data.get('token_time', 'Never')
+    """Home page with links"""
+    status = get_scanner_status()
+    client_status = '✅ Active' if fyers_client else '❌ Not Initialized'
     
     return f'''
-    <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f1f3d;color:white">
-    <h1>⚡ StrikeTrail Scanner</h1>
-    <p style="color:#aaa">ATR Trailing Stop Scanner</p>
-    <div style="background:#1a2a4a;padding:20px;margin:20px auto;max-width:500px;border-radius:8px;">
-    <p style="margin:10px"><strong>Status:</strong> {ts}</p>
-    <p style="margin:10px"><strong>Login Time:</strong> {tt}</p>
-    <p style="margin:10px;"><strong>Server Time:</strong> {datetime.now(IST).strftime('%d %b %Y %H:%M:%S IST')}</p>
+    <html><head><title>ProfitMaster Fyers Scanner</title></head>
+    <body style="font-family:monospace;background:#0a0a0a;color:#a3a3a3;padding:40px;text-align:center;">
+    <h1 style="color:#22c55e;font-size:32px;margin-bottom:10px;">🚀 PROFITMASTER FYERS SCANNER</h1>
+    <p style="color:#666;margin-bottom:30px;">ATR Trailing Stop Strategy - Live</p>
+    <div style="background:#171717;padding:20px;border-radius:8px;border:1px solid #262626;max-width:600px;margin:20px auto;">
+    <p><strong>Scanner Status:</strong> <span style="color:{'#22c55e' if status == 'ACTIVE' else '#eab308' if status == 'PRE_MARKET' else '#ef4444'};">{status}</span></p>
+    <p><strong>Fyers Client:</strong> <span style="color:{'#22c55e' if fyers_client else '#ef4444'};">{client_status}</span></p>
+    <p><strong>Server Time:</strong> {datetime.now(IST).strftime('%d %b %Y %H:%M:%S IST')}</p>
     </div>
     <p><a href="/refresh" style="color:#22c55e;text-decoration:none;padding:10px 24px;background:#166534;border-radius:6px;display:inline-block;margin:5px">🔑 Login via Fyers</a></p>
     <p><a href="/set-token" style="color:#3b82f6;text-decoration:none;padding:10px 24px;background:#1e3a8a;border-radius:6px;display:inline-block;margin:5px;">🔑 Set Token Manually</a></p>
@@ -955,6 +856,7 @@ def api_status():
         'scanner_status': get_scanner_status(),
         'server_time_ist': datetime.now(IST).isoformat(),
         'token_set': token_data['access_token'] is not None,
+        'client_initialized': fyers_client is not None,
         'token_time': token_data.get('token_time'),
         'scanner_model': 'ATR Trailing Stop (Walk-Forward Validated)',
         'config': {
@@ -970,11 +872,29 @@ def api_status():
 
 @app.route('/api/signals')
 def api_signals():
+    """
+    🔥 FIX #8: Better error handling for signals endpoint
+    """
     now = datetime.now(IST)
     status = get_scanner_status()
     
     if status == 'NO_TOKEN':
-        return jsonify({'status': 'success', 'scanner_status': 'NO_TOKEN', 'signals': [], 'timestamp': now.isoformat()})
+        return jsonify({
+            'status': 'error',
+            'scanner_status': 'NO_TOKEN',
+            'message': 'Please login via /refresh or set token manually',
+            'signals': [],
+            'timestamp': now.isoformat()
+        })
+    
+    if not fyers_client:
+        return jsonify({
+            'status': 'error',
+            'scanner_status': status,
+            'message': 'Fyers client not initialized - please re-login',
+            'signals': [],
+            'timestamp': now.isoformat()
+        })
     
     if scan_cache['last_scan'] and (now - scan_cache['last_scan']).total_seconds() < 60:
         return jsonify({
@@ -1006,6 +926,14 @@ def api_signals():
 def api_option_signals():
     now = datetime.now(IST)
     
+    if not fyers_client:
+        return jsonify({
+            'status': 'error',
+            'message': 'Fyers client not initialized',
+            'option_signals': [],
+            'timestamp': now.isoformat()
+        })
+    
     if options_cache['last_fetch'] and (now - options_cache['last_fetch']).total_seconds() < 120:
         return jsonify({
             'status': 'success',
@@ -1030,6 +958,10 @@ def api_option_signals():
 
 @app.route('/api/track', methods=['POST'])
 def api_track():
+    """Track signal performance"""
+    if not fyers_client:
+        return jsonify({'status': 'error', 'message': 'Fyers client not initialized'})
+    
     try:
         data = request.json
         if not data or 'signals' not in data:
@@ -1124,6 +1056,7 @@ if __name__ == '__main__':
     print(f"Port: {port}")
     print(f"Token: {'✅ Active' if token_data['access_token'] else '🔴 Not Set'}")
     print(f"Refresh Token: {'✅ Available' if token_data.get('refresh_token') else '🔴 Not Set'}")
+    print(f"Fyers Client: {'✅ Initialized' if fyers_client else '🔴 Not Initialized'}")
     print(f"Server Time: {datetime.now(IST).strftime('%d %b %Y %H:%M:%S IST')}")
     print(f"{'='*70}\n")
     
