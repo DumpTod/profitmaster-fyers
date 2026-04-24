@@ -264,45 +264,47 @@
         tr:last-child td { border-bottom: none; }
         tbody tr:hover { background: #f1f5f9; transition: background 0.15s; }
 
-        /* BUY/SELL COLORS */
+        /* BUY/SELL COLORS - GREEN FOR BUY, RED FOR SELL */
         .d-buy { 
-            color: var(--green); 
+            color: #065f46; 
             font-weight: 600; 
             background: var(--green-light);
-            padding: 4px 10px;
+            padding: 4px 12px;
             border-radius: 20px;
             font-size: 11px;
             display: inline-block;
+            border: 1px solid var(--green-border);
         }
         .d-sell { 
-            color: var(--red); 
+            color: #991b1b; 
             font-weight: 600; 
             background: var(--red-light);
-            padding: 4px 10px;
+            padding: 4px 12px;
             border-radius: 20px;
             font-size: 11px;
             display: inline-block;
+            border: 1px solid var(--red-border);
         }
 
         /* GRADE BADGES */
-        .g-aplus { color: #065f46; font-weight: 700; background: #d1fae5; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-        .g-a { color: var(--green-dark); font-weight: 600; background: var(--green-light); padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-        .g-b { color: #92400e; font-weight: 600; background: #fef3c7; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-        .g-c { color: var(--red-dark); font-weight: 600; background: var(--red-light); padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+        .g-aplus { color: #065f46; font-weight: 700; background: #d1fae5; padding: 3px 10px; border-radius: 4px; font-size: 11px; border: 1px solid #a7f3d0; }
+        .g-a { color: var(--green-dark); font-weight: 600; background: var(--green-light); padding: 3px 10px; border-radius: 4px; font-size: 11px; border: 1px solid var(--green-border); }
+        .g-b { color: #92400e; font-weight: 600; background: #fef3c7; padding: 3px 10px; border-radius: 4px; font-size: 11px; border: 1px solid #fde68a; }
+        .g-c { color: var(--red-dark); font-weight: 600; background: var(--red-light); padding: 3px 10px; border-radius: 4px; font-size: 11px; border: 1px solid var(--red-border); }
 
         /* OUTCOME TAGS */
-        .o-target { color: #065f46; font-weight: 600; background: var(--green-light); padding: 3px 10px; border-radius: 4px; font-size: 11px; }
-        .o-stop { color: #991b1b; font-weight: 600; background: var(--red-light); padding: 3px 10px; border-radius: 4px; font-size: 11px; }
-        .o-open { color: #1e40af; font-weight: 600; background: var(--blue-light); padding: 3px 10px; border-radius: 4px; font-size: 11px; }
-        .o-pending { color: #92400e; font-weight: 600; background: #fef3c7; padding: 3px 10px; border-radius: 4px; font-size: 11px; }
+        .o-target { color: #065f46; font-weight: 600; background: var(--green-light); padding: 4px 12px; border-radius: 4px; font-size: 11px; border: 1px solid var(--green-border); }
+        .o-stop { color: #991b1b; font-weight: 600; background: var(--red-light); padding: 4px 12px; border-radius: 4px; font-size: 11px; border: 1px solid var(--red-border); }
+        .o-open { color: #1e40af; font-weight: 600; background: var(--blue-light); padding: 4px 12px; border-radius: 4px; font-size: 11px; border: 1px solid #bfdbfe; }
+        .o-pending { color: #92400e; font-weight: 600; background: #fef3c7; padding: 4px 12px; border-radius: 4px; font-size: 11px; border: 1px solid #fde68a; }
 
-        .pnl-pos { color: var(--green); font-weight: 600; }
-        .pnl-neg { color: var(--red); font-weight: 600; }
+        .pnl-pos { color: var(--green-dark); font-weight: 700; }
+        .pnl-neg { color: var(--red-dark); font-weight: 700; }
 
         /* INPUTS */
         .e-input {
-            width: 85px;
-            padding: 6px 10px;
+            width: 90px;
+            padding: 7px 10px;
             border: 1px solid var(--steel-blue-border);
             border-radius: var(--radius-sm);
             font-family: 'DM Mono', monospace;
@@ -314,7 +316,7 @@
         .e-input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
 
         .o-select {
-            padding: 6px 10px;
+            padding: 7px 10px;
             border: 1px solid var(--steel-blue-border);
             border-radius: var(--radius-sm);
             font-family: 'DM Sans', sans-serif;
@@ -325,7 +327,7 @@
         }
 
         .btn-del {
-            padding: 5px 12px;
+            padding: 6px 12px;
             background: var(--red-light);
             color: var(--red-dark);
             border: 1px solid var(--red-border);
@@ -721,14 +723,32 @@ function showToast(m,t){
     setTimeout(function(){e.className='toast';},3500);
 }
 
-// ==================== LOAD FROM BACKEND DATABASE ====================
+// ==================== LOAD FROM BOTH LOCALSTORAGE (OLD TRADES) + BACKEND (NEW TRADES) ====================
 async function load(){
+    var localTrades = [];
+    var backendTrades = [];
+    
+    // 1️⃣ FIRST: Load OLD trades from localStorage (your historical data)
+    try {
+        var localData = localStorage.getItem('signalHistory');
+        if (localData) {
+            localTrades = JSON.parse(localData);
+            console.log('📦 Found ' + localTrades.length + ' trades in localStorage (old history)');
+        } else {
+            console.log('⚠️ No local history found in localStorage');
+        }
+    } catch(e) {
+        console.warn('⚠️ Could not read localStorage:', e);
+        localTrades = [];
+    }
+    
+    // 2️⃣ SECOND: Load NEW trades from backend database (scanner-generated)
     try {
         var r = await fetch(API_BASE+'/api/history');
         var d = await r.json();
         
         if(d.status === 'success' && d.trades && d.trades.length > 0) {
-            allH = d.trades.map(function(t) {
+            backendTrades = d.trades.map(function(t) {
                 return {
                     id: t.id,
                     timestamp: t.timestamp,
@@ -747,20 +767,64 @@ async function load(){
                     score: t.score || 70,
                     confidence: t.confidence || 75,
                     outcome: t.outcome || 'open',
-                    exit_price: t.exit_price ? parseFloat(t.exit_price) : null
+                    exit_price: t.exit_price ? parseFloat(t.exit_price) : null,
+                    source: 'backend'
                 };
             });
-            console.log('✅ Loaded ' + allH.length + ' trades from database');
+            console.log('🗄️ Found ' + backendTrades.length + ' trades in backend database');
         } else {
-            allH = [];
+            console.log('⚠️ No backend trades yet');
         }
     } catch(e) {
-        console.error('❌ Load error:', e);
-        showToast('Failed to load history','error');
-        allH = [];
+        console.warn('⚠️ Could not load from backend:', e);
+        backendTrades = [];
     }
     
-    sortH(); applyFilters();
+    // 3️⃣ MERGE BOTH: Combine + Remove Duplicates
+    allH = mergeTrades(localTrades, backendTrades);
+    
+    console.log('✅ Total merged trades: ' + allH.length + 
+          ' (' + localTrades.length + ' old local + ' + backendTrades.length + ' new backend)');
+    
+    sortH(); 
+    applyFilters();
+}
+
+// Helper: Merge two arrays, removing duplicates by unique key
+function mergeTrades(localArray, backendArray) {
+    var merged = [];
+    var seen = {}; // Track by unique identifier
+    
+    // Add backend trades first (newer, authoritative)
+    backendArray.forEach(function(trade) {
+        var key = (trade.id || trade.symbol + '_' + trade.timestamp);
+        if (!seen[key]) {
+            seen[key] = true;
+            merged.push(trade);
+        }
+    });
+    
+    // Then add local trades (only if not already present)
+    localArray.forEach(function(trade) {
+        var key = (trade.id || trade.symbol + '_' + (trade.timestamp || trade.scan_date));
+        if (!seen[key]) {
+            seen[key] = true;
+            trade.source = 'local'; // Mark as local trade
+            merged.push(trade);
+        } else {
+            // If duplicate exists, keep the one with more info (e.g., has exit_price)
+            var existingIdx = merged.findIndex(function(m) { 
+                return (m.id || m.symbol + '_' + m.timestamp) === key;
+            });
+            if (existingIdx > -1 && trade.exit_price && !merged[existingIdx].exit_price) {
+                merged[existingIdx].exit_price = trade.exit_price;
+                merged[existingIdx].outcome = trade.outcome;
+                console.log('🔄 Updated trade with local outcome data:', trade.symbol);
+            }
+        }
+    });
+    
+    return merged;
 }
 
 function calcGrade(t){
@@ -805,17 +869,17 @@ function renderTable(){
         var p=pnl!==null?(pnl>=0?'pnl-pos':'pnl-neg'):'';
         
         var h='<tr>';
-        h+='<td style="white-space:nowrap;">'+fmtDate(s.timestamp||s.scan_date)+'</td>';
-        h+='<td><strong>'+s.symbol+'</strong></td>';
+        h+='<td style="white-space:nowrap;font-size:12px;">'+fmtDate(s.timestamp||s.scan_date)+'</td>';
+        h+='<td><strong>'+s.symbol+'</strong>'+(s.source==='local'?' <span style="font-size:9px;color:#a0aec0;">[local]</span>':'')+'</td>';
         h+='<td>'+(s.direction==='BUY-LONG'?'<span class="d-buy">BUY</span>':'<span class="d-sell">SELL</span>')+'</td>';
         h+='<td><span class="'+gc+'">'+s.grade+'</span></td>';
-        h+='<td>'+s.score+'</td>';
+        h+='<td style="color:#718096;">'+s.score+'</td>';
         h+='<td style="font-family:\'DM Mono\',monospace;font-weight:600;">'+s.entry.toFixed(2)+'</td>';
         h+='<td style="color:#d97706;font-family:\'DM Mono\',monospace;">'+s.sl.toFixed(2)+'</td>';
         h+='<td style="color:var(--green-dark);font-family:\'DM Mono\',monospace;">'+s.target_1.toFixed(2)+'</td>';
         h+='<td style="color:var(--green-dark);font-family:\'DM Mono\',monospace;">'+s.target_2.toFixed(2)+'</td>';
-        h+='<td>'+s.risk_reward+'</td>';
-        h+='<td>'+Math.round((s.confidence||0)*100)+'%</td>';
+        h+='<td style="color:#718096;">'+s.risk_reward+'</td>';
+        h+='<td style="color:#718096;">'+Math.round((s.confidence||0)*100)+'%</td>';
         h+='<td><select class="o-select" onchange="updO('+i+',this.value)">'
             +'<option value="'+co+'" selected>'+co.replace('o-','').replace('_',' ')+'</option>'
             +'<option value="">—</option>'
@@ -885,7 +949,7 @@ function renderCharts(){
     sorted.forEach(function(c){cum.push(Math.round(getTradePnL(c)));pD.push(fmtDate(c.timestamp));});
     var ctx=document.getElementById('chartPnL').getContext('2d');
     if(chPnL)chPnL.destroy();
-    chPnL=new Chart(ctx,{type:'line',{data:{labels:pD,datasets:[{label:'Cumulative P&L',data:cum,borderColor:'#16a34a',backgroundColor:'rgba(22,197,94,0.1)',borderWidth:2.5,pointRadius:3,pointHoverRadius:6,tension:0.3,fill:true}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{TT,callbacks:{label:function(c){return'₹'+c.raw.toLocaleString('en-IN');}}}},scales:{x:{grid:{drawBorder:false,color:'#f1f5f9'},ticks:{color:'#94a3b8'}},y:{grid:{color:'#f1f5f9'},ticks:{color:'#94a3b8',callback:function(v){return'₹'+v;}}}}}});
+    chPnL=new Chart(ctx,{type:'line',{data:{labels:pD,datasets:[{label:'Cumulative P&L',data:cum,borderColor:'#16a34a',backgroundColor:'rgba(34,197,94,0.1)',borderWidth:2.5,pointRadius:3,pointHoverRadius:6,tension:0.3,fill:true}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{TT,callbacks:{label:function(c){return'₹'+c.raw.toLocaleString('en-IN');}}}},scales:{x:{grid:{drawBorder:false,color:'#f1f5f9'},ticks:{color:'#94a3b8'}},y:{grid:{color:'#f1f5f9'},ticks:{color:'#94a3b8',callback:function(v){return'₹'+v;}}}}}});
 
     var lastVal=cum[cum.length-1]||0;
     var eb=document.getElementById('equityBadge');
@@ -951,12 +1015,18 @@ function exportCSV(){
     filtH.forEach(function(s){rows.push([fmtDate(s.timestamp||s.scan_date),s.symbol,s.direction,s.grade,s.score,s.entry,s.sl,s.target_1,s.target_2,s.risk_reward,Math.round((s.confidence||0)*100),classifyOutcome(s),s.exit_price||'',getTradePnL(s)||''].join(','));});
     var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));a.download='striketrail_'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('CSV exported','success');
 }
-function clearAll(){if(confirm('Clear ALL history?')){allH=[];saveLS();applyFilters();showToast('Cleared','info');}}
+function clearAll(){if(confirm('Clear ALL history? This cannot be undone.')){allH=[];saveLS();applyFilters();showToast('Cleared','info');}}
 function saveLS(){try{localStorage.setItem('signalHistory',JSON.stringify(allH.slice(-5000)));}catch(e){console.error(e);}}
 
-// ==================== INIT ====================
+// ==================== INITIALIZATION ====================
+console.log('📊 Loading trade history...');
 load();
-setInterval(load,30000);
+
+// Auto-refresh every 30 seconds to get new trades from scanner/database
+setInterval(function(){
+    console.log('🔄 Refreshing trade history...');
+    load();
+}, 30000);
 </script>
 </body>
 </html>
