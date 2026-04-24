@@ -542,12 +542,17 @@ def generate_signals():
                 t1 = round(last_signal['slow_short_stop'], 2)
                 t2 = round(entry + 2 * (entry - sl), 2)
 
-            else:  # SELL
+            else:  # SELL-SHORT
                 direction = 'SELL-SHORT'
                 entry = round(last_signal['close'], 2)
                 sl = round(last_signal['fast_short_stop'], 2)
-                t1 = round(last_signal['slow_long_stop'], 2)
-                t2 = round(entry - 2 * (sl - entry), 2)
+    
+            # Risk amount (always positive)
+                risk = abs(sl - entry)
+    
+            # Targets must be BELOW entry for shorts!
+                t1 = round(entry - (2 * risk), 2)   # Target 1: 2R below entry
+                t2 = round(entry - (3 * risk), 2)   # Target 2: 3R below entry (or keep your original multiplier)
 
             signal_data = {
                 'symbol': symbol_name,
