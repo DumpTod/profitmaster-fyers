@@ -32,75 +32,46 @@
         
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        body {
-            font-family: 'DM Sans', sans-serif;
-            background: var(--bg);
-            color: var(--text-primary);
-            min-height: 100vh;
-            line-height: 1.5;
-        }
+        body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text-primary); min-height: 100vh; line-height: 1.5; }
 
-        .header {
-            background: linear-gradient(135deg, var(--steel-blue-dark) 0%, #1e3a5f 100%);
-            padding: 20px 32px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
+        .header { background: linear-gradient(135deg, var(--steel-blue-dark) 0%, #1e3a5f 100%); padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .header-left h1 { font-size: 20px; color: #fff; font-weight: 600; }
         .header-left .subtitle { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 4px; }
         .header-right { display: flex; gap: 10px; flex-wrap: wrap; }
 
-        .hb-btn {
-            padding: 10px 18px;
-            border-radius: var(--radius);
-            cursor: pointer;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            border: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s;
-        }
-
+        .hb-btn { padding: 10px 18px; border-radius: var(--radius); cursor: pointer; text-decoration: none; font-size: 13px; font-weight: 500; border: none; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s; }
         .hb-back { background: rgba(255,255,255,0.15); color: #fff; }
         .hb-back:hover { background: rgba(255,255,255,0.25); }
         .hb-rescan { background: var(--green); color: #fff; }
-        .hb-rescan:hover { background: var(--green-dark); }
         .hb-csv { background: var(--blue); color: #fff; }
-        .hb-csv:hover { background: #1d4ed8; }
         .hb-clear { background: var(--red); color: #fff; }
-        .hb-clear:hover { background: var(--red-dark); }
+        .hb-debug { background: #8b5cf6; color: #fff; } /* Purple debug button */
 
         .filters { padding: 16px 32px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; background: var(--bg-card); border-bottom: 1px solid var(--steel-blue-border); }
 
-        .f-select {
-            padding: 8px 14px; border: 1px solid var(--steel-blue-border);
-            border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
-            color: var(--text-primary); background: var(--bg); min-width: 140px;
-        }
+        .f-select { padding: 8px 14px; border: 1px solid var(--steel-blue-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; color: var(--text-primary); background: var(--bg); min-width: 140px; }
+        .f-reset { padding: 8px 16px; border: 1px solid var(--steel-blue-border); border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; background: transparent; color: var(--text-secondary); }
 
-        .f-reset {
-            padding: 8px 16px; border: 1px solid var(--steel-blue-border);
-            border-radius: var(--radius-sm); cursor: pointer; font-size: 13px;
-            background: transparent; color: var(--text-secondary);
+        /* DEBUG BOX - Visible on page */
+        .debug-box {
+            margin: 20px 32px;
+            padding: 20px;
+            background: #1e293b;
+            color: #e2e8f0;
+            border-radius: var(--radius);
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            line-height: 1.8;
+            border: 2px dashed #8b5cf6;
         }
+        .debug-box h3 { color: #fbbf24; margin-bottom: 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; }
+        .debug-ok { color: #34d399; }
+        .debug-warn { color: #fbbf24; }
+        .debug-err { color: #f87171; }
+        .debug-line { margin: 4px 0; word-break: break-all; }
 
-        .stats-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            gap: 16px; padding: 24px 32px;
-        }
-
-        .stat {
-            background: var(--bg-card); padding: 18px; border-radius: var(--radius);
-            box-shadow: var(--shadow); border: 1px solid var(--steel-blue-border);
-        }
-
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; padding: 24px 32px; }
+        .stat { background: var(--bg-card); padding: 18px; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--steel-blue-border); }
         .stat .s-label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
         .stat .s-val { font-size: 24px; font-weight: 700; margin-top: 4px; }
         .s-val.green { color: var(--green); }
@@ -108,13 +79,7 @@
         .s-val.blue { color: var(--blue); }
 
         .table-wrap { padding: 0 32px 32px; }
-
-        table {
-            width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px;
-            background: var(--bg-card); border-radius: var(--radius); overflow: hidden;
-            box-shadow: var(--shadow); border: 1px solid var(--steel-blue-border);
-        }
-
+        table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; background: var(--bg-card); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--steel-blue-border); }
         thead { background: var(--steel-blue-dark); }
         th { color: rgba(255,255,255,0.9); padding: 14px 16px; text-align: left; font-weight: 600; text-transform: uppercase; font-size: 11px; }
         td { padding: 12px 16px; border-bottom: 1px solid var(--steel-blue-border); vertical-align: middle; }
@@ -123,31 +88,23 @@
 
         .d-buy { color: #065f46; font-weight: 600; background: var(--green-light); padding: 4px 12px; border-radius: 20px; font-size: 11px; display: inline-block; }
         .d-sell { color: #991b1b; font-weight: 600; background: var(--red-light); padding: 4px 12px; border-radius: 20px; font-size: 11px; display: inline-block; }
-
         .g-aplus { color: #065f46; font-weight: 700; background: #d1fae5; padding: 3px 10px; border-radius: 4px; font-size: 11px; }
         .g-a { color: var(--green-dark); font-weight: 600; background: var(--green-light); padding: 3px 10px; border-radius: 4px; font-size: 11px; }
         .g-b { color: #92400e; font-weight: 600; background: #fef3c7; padding: 3px 10px; border-radius: 4px; font-size: 11px; }
         .g-c { color: var(--red-dark); font-weight: 600; background: var(--red-light); padding: 3px 10px; border-radius: 4px; font-size: 11px; }
-
         .o-target { color: #065f46; font-weight: 600; background: var(--green-light); padding: 4px 12px; border-radius: 4px; font-size: 11px; }
         .o-stop { color: #991b1b; font-weight: 600; background: var(--red-light); padding: 4px 12px; border-radius: 4px; font-size: 11px; }
         .o-open { color: #1e40af; font-weight: 600; background: var(--blue-light); padding: 4px 12px; border-radius: 4px; font-size: 11px; }
-
         .pnl-pos { color: var(--green-dark); font-weight: 700; }
         .pnl-neg { color: var(--red-dark); font-weight: 700; }
-
         .e-input { width: 90px; padding: 7px 10px; border: 1px solid var(--steel-blue-border); border-radius: var(--radius-sm); font-family: 'DM Mono', monospace; font-size: 12px; background: var(--bg); }
         .o-select { padding: 7px 10px; border: 1px solid var(--steel-blue-border); border-radius: var(--radius-sm); font-size: 12px; background: var(--bg); cursor: pointer; }
-
         .btn-del { padding: 6px 12px; background: var(--red-light); color: var(--red-dark); border: 1px solid #fecaca; border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; }
         .btn-del:hover { background: var(--red); color: #fff; }
-
         .no-data { text-align: center; padding: 60px 32px; color: var(--text-muted); background: var(--bg-card); border-radius: var(--radius); margin: 24px 32px; border: 2px dashed var(--steel-blue-border); }
-
         .analytics-section { padding: 28px 32px; display: none; }
         .analytics-header h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
         .analytics-header .ah-sub { font-size: 13px; color: var(--text-muted); }
-
         .summary-ribbon { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
         .sr-card { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: flex; align-items: center; gap: 14px; border: 1px solid var(--steel-blue-border); }
         .sr-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
@@ -158,7 +115,6 @@
         .sr-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
         .sr-val { font-size: 20px; font-weight: 700; }
         .sr-caption { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-
         .charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 24px; }
         @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
         .chart-card { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; border: 1px solid var(--steel-blue-border); }
@@ -168,38 +124,13 @@
         .cc-sub { font-size: 11px; color: var(--text-muted); }
         .cc-badge { font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 20px; background: var(--steel-blue-border); }
         canvas { max-height: 220px !important; }
-
         .toast { position: fixed; bottom: 24px; right: 24px; padding: 14px 20px; border-radius: var(--radius); font-size: 13px; font-weight: 500; z-index: 9999; transform: translateY(100px); opacity: 0; transition: all 0.3s; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-width: 360px; }
         .toast.show { transform: translateY(0); opacity: 1; }
         .toast.success { background: var(--green-light); color: #065f46; border-left: 4px solid var(--green); }
         .toast.error { background: var(--red-light); color: #991b1b; border-left: 4px solid var(--red); }
         .toast.info { background: var(--blue-light); color: #1e40af; border-left: 4px solid var(--blue); }
-
         .footer { padding: 24px 32px; text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 40px; border-top: 1px solid var(--steel-blue-border); background: var(--bg-card); }
         .footer a { color: var(--blue); text-decoration: none; font-weight: 500; }
-
-        /* DEBUG PANEL */
-        .debug-panel {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            background: #1e293b;
-            color: #e2e8f0;
-            padding: 16px;
-            border-radius: 8px;
-            font-family: 'DM Mono', monospace;
-            font-size: 11px;
-            z-index: 10000;
-            max-width: 400px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        .debug-panel h3 { color: #fbbf24; margin-bottom: 8px; font-size: 12px; }
-        .debug-line { margin: 4px 0; word-break: break-all; }
-        .debug-ok { color: #34d399; }
-        .debug-warn { color: #fbbf24; }
-        .debug-err { color: #f87171; }
     </style>
 </head>
 <body>
@@ -215,14 +146,15 @@
             <button class="hb-btn hb-rescan" onclick="rescanTrades()">🔄 Rescan</button>
             <button class="hb-btn hb-csv" onclick="exportCSV()">📥 CSV</button>
             <button class="hb-btn hb-clear" onclick="clearAll()">🗑️ Clear</button>
-            <button class="hb-btn" style="background:#6366f1;color:#fff;" onclick="toggleDebug()">🔍 Debug</button>
+            <!-- 🔴 DEBUG BUTTON - PURPLE COLOR -->
+            <button class="hb-btn hb-debug" onclick="runDebug()">🔍 DEBUG</button>
         </div>
     </div>
 
-    <!-- DEBUG PANEL -->
-    <div class="debug-panel" id="debugPanel" style="display:none;">
-        <h3>🔍 DEBUG INFO</h3>
-        <div id="debugContent"></div>
+    <!-- 🔴 DEBUG BOX - VISIBLE ON PAGE -->
+    <div class="debug-box" id="debugBox" style="display:none;">
+        <h3>🔍 DIAGNOSTIC REPORT</h3>
+        <div id="debugContent">Click DEBUG button above to run diagnostic...</div>
     </div>
 
     <!-- Filters -->
@@ -267,7 +199,6 @@
 <script>
 var API_BASE = 'https://profitmaster-fyers.onrender.com';
 var allH = [], filtH = [];
-var chPnL, chOutcome, chSymbol;
 
 Chart.defaults.font.family = "'DM Sans', sans-serif";
 Chart.defaults.color = '#4a5568';
@@ -278,76 +209,100 @@ function showToast(m,t){
     setTimeout(function(){e.className='toast';},3500);
 }
 
-function toggleDebug(){
-    var p=document.getElementById('debugPanel');
-    p.style.display=p.style.display==='none'?'block':'none';
-}
-
-function debugLog(msg, type){
-    var d=document.getElementById('debugContent');
-    if(!d) return;
-    var div=document.createElement('div');
-    div.className='debug-line debug-'+(type||'ok');
-    div.textContent='▸ '+msg;
-    d.appendChild(d);
-}
-
-// ==================== EMERGENCY LOAD - CHECKS ALL SOURCES ====================
-async function load(){
-    var debug = document.getElementById('debugContent');
-    if(debug) debug.innerHTML = ''; // Clear debug
+// ==================== 🔍 DEBUG FUNCTION - SHOWS ON PAGE ====================
+function runDebug(){
+    var box = document.getElementById('debugBox');
+    var content = document.getElementById('debugContent');
     
-    debugLog('🚀 Starting load process...', 'ok');
+    box.style.display = 'block';
+    content.innerHTML = '<div class="debug-line debug-ok">🚀 Running diagnostic...</div>';
     
-    // STEP 1: Check ALL localStorage keys
-    debugLog('📦 Checking localStorage...', 'ok');
+    // Check ALL localStorage keys
     var allKeys = Object.keys(localStorage);
-    debugLog('Found '+allKeys.length+' localStorage keys: ['+allKeys.join(', ')+']', 'ok');
+    content.innerHTML += '<div class="debug-line">📦 Total localStorage keys: <strong>' + allKeys.length + '</strong></div>';
+    content.innerHTML += '<div class="debug-line">📋 Keys found: [' + allKeys.join(', ') + ']</div>';
     
-    // Try different possible keys where old trades might be stored
-    var possibleKeys = ['signalHistory', 'trades', 'history', 'strikeTrail_history', 'savedSignals'];
-    var localTrades = [];
-    var foundKey = null;
+    // Try each possible key
+    var possibleKeys = ['signalHistory', 'trades', 'history', 'strikeTrail_history', 'savedSignals', 'allSignals'];
+    var localCount = 0;
+    var sampleTrade = null;
     
     for (var k = 0; k < possibleKeys.length; k++) {
         var key = possibleKeys[k];
         var data = localStorage.getItem(key);
+        
+        if (data) {
+            try {
+                var parsed = JSON.parse(data);
+                if (Array.isArray(parsed)) {
+                    if (parsed.length > 0) {
+                        content.innerHTML += '<div class="debug-line debug-ok">✅ KEY "' + key + '" HAS ' + parsed.length + ' TRADES!</div>';
+                        localCount += parsed.length;
+                        sampleTrade = parsed[0];
+                    } else {
+                        content.innerHTML += '<div class="debug-line debug-warn">⚠️ Key "' + key + '" exists but EMPTY</div>';
+                    }
+                } else {
+                    content.innerHTML += '<div class="debug-line debug-warn">⚠️ Key "' + key + '" is not an array</div>';
+                }
+            } catch(e) {
+                content.innerHTML += '<div class="debug-line debug-err">❌ Error reading "' + key + '": ' + e.message + '</div>';
+            }
+        } else {
+            content.innerHTML += '<div class="debug-line">☑️ Key "' + key + '" = NOT FOUND</div>';
+        }
+    }
+    
+    // Summary
+    if (localCount > 0) {
+        content.innerHTML += '<div class="debug-line" style="margin-top:12px;padding:10px;background:#065f46;color:#fff;border-radius:6px;">✅ FOUND ' + localCount + ' OLD TRADES IN LOCALSTORAGE!</div>';
+        content.innerHTML += '<div class="debug-line debug-ok">📋 Sample: ' + JSON.stringify(sampleTrade).substring(0, 200) + '...</div>';
+    } else {
+        content.innerHTML += '<div class="debug-line" style="margin-top:12px;padding:10px;background:#991b1b;color:#fff;border-radius:6px;">❌ NO OLD TRADES FOUND! Your browser may have cleared them.</div>';
+    }
+    
+    // Check backend
+    content.innerHTML += '<div class="debug-line" style="margin-top:12px;">🗄️ Checking backend API...</div>';
+    
+    fetch(API_BASE+'/api/history')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.status === 'success' && d.trades && d.trades.length > 0) {
+                content.innerHTML += '<div class="debug-line debug-ok">✅ Backend has ' + d.trades.length + ' trades</div>';
+            } else {
+                content.innerHTML += '<div class="debug-line debug-warn">⚠️ Backend has 0 trades (or error)</div>';
+            }
+        })
+        .catch(function(e) {
+            content.innerHTML += '<div class="debug-line debug-err">❌ Backend error: ' + e.message + '</div>';
+        });
+}
+
+async function load(){
+    // STEP 1: Load from localStorage (OLD TRADES)
+    var localTrades = [];
+    
+    // Try ALL possible keys
+    var keysToTry = ['signalHistory', 'trades', 'history', 'strikeTrail_history'];
+    for (var i = 0; i < keysToTry.length; i++) {
+        var data = localStorage.getItem(keysToTry[i]);
         if (data) {
             try {
                 var parsed = JSON.parse(data);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                    debugLog('✅ FOUND DATA in key "'+key+'": '+parsed.length+' trades!', 'ok');
                     localTrades = parsed;
-                    foundKey = key;
-                    break; // Use first one found
-                } else {
-                    debugLog('⚠️ Key "'+key+'" exists but is not array or empty', 'warn');
+                    console.log('✅ Loaded ' + localTrades.length + ' trades from "' + keysToTry[i] + '"');
+                    break;
                 }
-            } catch(e) {
-                debugLog('❌ Error parsing key "'+key+'": '+e.message, 'err');
-            }
-        } else {
-            debugLog('☑️ Key "'+key+'" not found', 'ok');
+            } catch(e) {}
         }
     }
     
-    if (!foundKey) {
-        debugLog('❌ NO OLD TRADES FOUND IN ANY LOCALSTORAGE KEY!', 'err');
-        debugLog('💡 Your old trades may have been cleared by browser or were never saved to localStorage', 'warn');
-    }
-    
-    // Show sample of what we found
-    if (localTrades.length > 0) {
-        debugLog('📋 Sample old trade: '+JSON.stringify(localTrades[0]).substring(0, 150)+'...', 'ok');
-    }
-    
-    // STEP 2: Load from backend
-    debugLog('🗄️ Loading from backend API...', 'ok');
+    // STEP 2: Load from backend (NEW TRADES)
     var backendTrades = [];
     try {
         var r = await fetch(API_BASE+'/api/history');
         var d = await r.json();
-        
         if(d.status === 'success' && d.trades && d.trades.length > 0) {
             backendTrades = d.trades.map(function(t) {
                 return {
@@ -371,153 +326,74 @@ async function load(){
                     source: 'backend'
                 };
             });
-            debugLog('✅ Backend returned '+backendTrades.length+' trades', 'ok');
-        } else {
-            debugLog('⚠️ No backend trades (or API error)', 'warn');
         }
-    } catch(e) {
-        debugLog('❌ Backend error: '+e.message, 'err');
-    }
+    } catch(e) {}
     
-    // STEP 3: MERGE
-    debugLog('🔀 Merging '+localTrades.length+' local + '+backendTrades.length+' backend...', 'ok');
+    // STEP 3: MERGE - Local first, then backend
+    allH = [];
     
-    if (localTrades.length > 0 && backendTrades.length > 0) {
-        allH = [...backendTrades, ...localTrades]; // Simple concat for now
-        debugLog('✅ Total after merge: '+allH.length+' trades', 'ok');
-    } else if (localTrades.length > 0) {
-        allH = localTrades;
-        debugLog('✅ Using only local trades ('+allH.length+')', 'ok');
-    } else if (backendTrades.length > 0) {
-        allH = backendTrades;
-        debugLog('✅ Using only backend trades ('+allH.length+')', 'ok');
-    } else {
-        allH = [];
-        debugLog('⚠️ NO TRADES AT ALL!', 'warn');
-    }
+    // Add local trades first (marked as local)
+    localTrades.forEach(function(t) {
+        t.source = 'local';
+        allH.push(t);
+    });
     
+    // Then add backend trades (if not duplicate)
+    backendTrades.forEach(function(bt) {
+        var exists = allH.find(function(lt) { 
+            return lt.symbol === bt.symbol && lt.timestamp === bt.timestamp;
+        });
+        if (!exists) {
+            allH.push(bt);
+        }
+    });
+    
+    console.log('📊 Total: ' + allH.length + ' (' + localTrades.length + ' local + ' + backendTrades.length + ' backend)');
     sortH(); applyFilters();
-    
-    debugLog('🎉 Load complete! Displaying '+filtH.length+' filtered trades.', 'ok');
 }
 
-function calcGrade(t){
-    if(!t.entry||!t.sl) return 'C';
-    var r=Math.abs(t.entry-t.sl);
-    if(r>=200) return 'A+';
-    if(r>=100) return 'A';
-    if(r>=50) return 'B';
-    return 'C';
-}
-
+function calcGrade(t){ if(!t.entry||!t.sl)return 'C'; var r=Math.abs(t.entry-t.sl); if(r>=200)return'A+'; if(r>=100)return'A'; if(r>=50)return'B'; return'C'; }
 function sortH(){ allH.sort(function(a,b){return new Date(b.scan_date||b.timestamp||0)-new Date(a.scan_date||a.timestamp||0)}); }
-
 function resetFilters(){['fGrade','fDir','fSymbol'].forEach(function(id){document.getElementById(id).value=''}); applyFilters();}
-
 function applyFilters(){
     var fg=document.getElementById('fGrade').value, fd=document.getElementById('fDir').value, fs=document.getElementById('fSymbol').value;
-    filtH=allH.filter(function(s){
-        if(fg&&s.grade!==fg) return false;
-        if(fd&&s.direction!==fd) return false;
-        if(fs&&s.symbol!==fs) return false;
-        return true;
-    });
+    filtH=allH.filter(function(s){ if(fg&&s.grade!==fg)return false; if(fd&&s.direction!==fd)return false; if(fs&&s.symbol!==fs)return false; return true; });
     renderTable(); updateStats();
 }
-
 function renderTable(){
-    var tb=document.getElementById('tbody'), nd=document.getElementById('noData');
-    tb.innerHTML='';
-    if(filtH.length===0){ nd.style.display='block'; return; }
-    nd.style.display='none';
-    
+    var tb=document.getElementById('tbody'), nd=document.getElementById('noData'); tb.innerHTML='';
+    if(filtH.length===0){ nd.style.display='block'; return; } nd.style.display='none';
     filtH.forEach(function(s,i){
-        var co=classifyOutcome(s);
-        var gc=s.grade==='A+'?'g-aplus':s.grade==='A'?'g-a':s.grade==='B'?'g-b':'g-c';
-        var pnl=getTradePnL(s);
-        var p=pnl!==null?(pnl>=0?'pnl-pos':'pnl-neg'):'';
-        
+        var co=classifyOutcome(s), gc=s.grade==='A+'?'g-aplus':s.grade==='A'?'g-a':s.grade==='B'?'g-b':'g-c';
+        var pnl=getTradePnL(s), p=pnl!==null?(pnl>=0?'pnl-pos':'pnl-neg'):'';
         var h='<tr>';
         h+='<td style="white-space:nowrap;font-size:12px;">'+fmtDate(s.timestamp||s.scan_date)+'</td>';
-        h+='<td><strong>'+s.symbol+'</strong>'+(s.source==='local'?' <span style="font-size:9px;color:#f59e0b;">[LOCAL]</span>':'<span style="font-size:9px;color:#3b82f6;">[API]</span>')+'</td>';
+        h+='<td><strong>'+s.symbol+'</strong> <span style="font-size:9px;color:'+(s.source==='local'?'#f59e0b':'#3b82f6')+';">['+(s.source==='local'?'LOCAL':'API')+']</span></td>';
         h+='<td>'+(s.direction==='BUY-LONG'?'<span class="d-buy">BUY</span>':'<span class="d-sell">SELL</span>')+'</td>';
         h+='<td><span class="'+gc+'">'+s.grade+'</span></td>';
         h+='<td style="font-family:\'DM Mono\',monospace;font-weight:600;">'+(s.entry||0).toFixed(2)+'</td>';
-        h+='<td style="color:#d97706;font-family:\'DM Mono\',monospace;">'+(s.sl||0).toFixed(2)+'</td>';
-        h+='<td style="color:var(--green-dark);font-family:\'DM Mono\',monospace;">'+(s.target_1||0).toFixed(2)+'</td>';
-        h+='<td style="color:var(--green-dark);font-family:\'DM Mono\',monospace;">'+(s.target_2||0).toFixed(2)+'</td>';
+        h+='<td style="color:#d97706;">'+(s.sl||0).toFixed(2)+'</td>';
+        h+='<td style="color:var(--green-dark);">'+(s.target_1||0).toFixed(2)+'</td>';
+        h+='<td style="color:var(--green-dark);">'+(s.target_2||0).toFixed(2)+'</td>';
         h+='<td>'+(s.risk_reward||'1:2')+'</td>';
         h+='<td><select class="o-select" onchange="updO('+i+',this.value)"><option value="'+co+'" selected>'+co.replace('o-',' ')+'</option><option value="">—</option><option value="o-target_hit">Target Hit</option><option value="o-stop_hit">Stop Hit</option><option value="o-open">Open</option></select></td>';
-        h+='<td><input type="number" step="0.01" value="'+(s.exit_price||'')+'" placeholder="—" class="e-input" id="ex'+i+'"></td>';
+        h+='<td><input type="number" step="0.01" value="'+(s.exit_price||'')+'" class="e-input" id="ex'+i+'"></td>';
         h+='<td class="'+p+'" style="font-family:\'DM Mono\',monospace;font-weight:600;">'+(pnl!==null?fmtRupee(pnl):'—')+'</td>';
-        h+='<td><button class="btn-del" onclick="delTrade('+i+')">×</button></td>';
-        h+='</tr>';
+        h+='<td><button class="btn-del" onclick="delTrade('+i+')">×</button></td></tr>';
         tb.innerHTML+=h;
     });
-    
-    filtH.forEach(function(s,i){
-        var el=document.getElementById('ex'+i);
-        if(el) el.addEventListener('change',function(){updE(i,this.value);});
-    });
+    filtH.forEach(function(s,i){var el=document.getElementById('ex'+i);if(el)el.addEventListener('change',function(){updE(i,this.value);});});
 }
-
-function fmtDate(sd){
-    try{ var d=new Date(sd); return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Kolkata'});} catch(e){return sd||'';}
-}
-function fmtRupee(v){ return (v>=0?'₹':'-₹')+Math.abs(Math.round(v)||0).toLocaleString('en-IN'); }
-
-function classifyOutcome(s){
-    if(!s.exit_price&&isNaN(s.exit_price)) return s.outcome||'open';
-    var ep=parseFloat(s.exit_price), sl=parseFloat(s.sl), t2=parseFloat(s.target_2)||parseFloat(s.target_1);
-    if(s.direction==='BUY-LONG'){if(ep>=t2)return'target_hit';if(ep<=sl)return'stop_hit';}
-    else{if(ep<=t2)return'target_hit';if(ep>=sl)return'stop_hit';}
-    return'open';
-}
-function getTradePnL(s){
-    if(!s.entry||!s.exit_price) return null;
-    var ep=parseFloat(s.exit_price), en=parseFloat(s.entry), ls=parseInt(s.lot_size||1);
-    return s.direction==='BUY-LONG'?((ep-en)*ls):((en-ep)*ls);
-}
-
-function updateStats(){
-    var tl=filtH.length, tg=0, st=0, avg=0;
-    filtH.forEach(function(s){
-        var o=classifyOutcome(s);
-        if(o==='target_hit')tg++;
-        else if(o==='stop_hit')st++;
-        var p=getTradePnL(s); if(p!==null)avg+=p;
-    });
-    document.getElementById('hTotal').textContent=tl;
-    document.getElementById('hTarget').textContent=tg;
-    document.getElementById('hStop').textContent=st;
-    document.getElementById('hWR').textContent=(tg+st)>0?Math.round(tg/(tg+st)*100)+'%':'—';
-    document.getElementById('hPnL').textContent=fmtRupee(avg);
-}
-
-// ACTIONS
+function fmtDate(sd){try{var d=new Date(sd);return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Kolkata'});}catch(e){return sd||'';}}
+function fmtRupee(v){return(v>=0?'₹':'-₹')+Math.abs(Math.round(v)||0).toLocaleString('en-IN');}
+function classifyOutcome(s){if(!s.exit_price&&isNaN(s.exit_price))return s.outcome||'open';var ep=parseFloat(s.exit_price),sl=parseFloat(s.sl),t2=parseFloat(s.target_2)||parseFloat(s.target_1);if(s.direction==='BUY-LONG'){if(ep>=t2)return'target_hit';if(ep<=sl)return'stop_hit';}else{if(ep<=t2)return'target_hit';if(ep>=sl)return'stop_hit';}return'open';}
+function getTradePnL(s){if(!s.entry||!s.exit_price)return null;var ep=parseFloat(s.exit_price),en=parseFloat(s.entry),ls=parseInt(s.lot_size||1);return s.direction==='BUY-LONG'?((ep-en)*ls):((en-ep)*ls);}
+function updateStats(){var tl=filtH.length,tg=0,st=0,avg=0;filtH.forEach(function(s){var o=classifyOutcome(s);if(o==='target_hit')tg++;else if(o==='stop_hit')st++;var p=getTradePnL(s);if(p!==null)avg+=p;});document.getElementById('hTotal').textContent=tl;document.getElementById('hTarget').textContent=tg;document.getElementById('hStop').textContent=st;document.getElementById('hWR').textContent=(tg+st)>0?Math.round(tg/(tg+st)*100)+'%':'—';document.getElementById('hPnL').textContent=fmtRupee(avg);}
 function updO(i,v){var idx=allH.indexOf(filtH[i]);if(idx>-1){allH[idx].outcome=v.replace('o-','');saveLS();applyFilters();}}
 function updE(i,v){var idx=allH.indexOf(filtH[i]);if(idx>-1){allH[idx].exit_price=v?parseFloat(v):null;saveLS();applyFilters();}}
 function delTrade(i){if(confirm('Delete?')){var idx=allH.indexOf(filtH[i]);if(idx>-1)allH.splice(idx,1);saveLS();applyFilters();showToast('Deleted','info');}}
-
-async function rescanTrades(){
-    var btn=document.querySelector('.hb-rescan');btn.disabled=true;btn.textContent='⏳...';
-    try{
-        var r=await fetch(API_BASE+'/api/track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signals:filtH.map(function(s){return{_id:s.id||(s.symbol+s.timestamp),symbol:s.symbol,entry:s.entry,sl:s.sl,target_1:s.target_1,target_2:s.target_2,direction:s.direction};})})});
-        var d=await r.json();
-        if(d.status==='success'&&d.results){
-            d.results.forEach(function(res){var sig=filtH.find(function(s){return(s.id||(s.symbol+s.timestamp))===res._id;});if(sig){if(res.exit_price)sig.exit_price=res.exit_price;if(res.status)sig.outcome=res.status;}});
-            saveLS();applyFilters();showToast('Updated','success');
-        }
-    }catch(e){showToast(e.message,'error');}
-    finally{btn.disabled=false;btn.textContent='🔄 Rescan';}
-}
-
-function exportCSV(){
-    if(!filtH.length){showToast('No data','info');return;}
-    var rows=[['Date','Symbol','Dir','Entry','SL','T1','T2','Outcome','Exit','P&L']];
-    filtH.forEach(function(s){rows.push([fmtDate(s.timestamp||s.scan_date),s.symbol,s.direction,s.entry,s.sl,s.target_1,s.target_2,classifyOutcome(s),s.exit_price||'',getTradePnL(s)||''].join(','));});
-    var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));a.download='trades_'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('Exported','success');
-}
+async function rescanTrades(){var btn=document.querySelector('.hb-rescan');btn.disabled=true;btn.textContent='⏳...';try{var r=await fetch(API_BASE+'/api/track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signals:filtH.map(function(s){return{_id:s.id||(s.symbol+s.timestamp),symbol:s.symbol,entry:s.entry,sl:s.sl,target_1:s.target_1,target_2:s.target_2,direction:s.direction};})})});var d=await r.json();if(d.status==='success'&&d.results){d.results.forEach(function(res){var sig=filtH.find(function(s){return(s.id||(s.symbol+s.timestamp))===res._id;});if(sig){if(res.exit_price)sig.exit_price=res.exit_price;if(res.status)sig.outcome=res.status;}});saveLS();applyFilters();showToast('Updated','success');}catch(e){showToast(e.message,'error');}finally{btn.disabled=false;btn.textContent='🔄 Rescan';}}
+function exportCSV(){if(!filtH.length){showToast('No data','info');return;}var rows=[['Date','Symbol','Dir','Entry','SL','T1','T2','Outcome','Exit','P&L']];filtH.forEach(function(s){rows.push([fmtDate(s.timestamp||s.scan_date),s.symbol,s.direction,s.entry,s.sl,s.target_1,s.target_2,classifyOutcome(s),s.exit_price||'',getTradePnL(s)||''].join(','));});var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));a.download='trades_'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('Exported','success');}
 function clearAll(){if(confirm('Clear ALL?')){allH=[];saveLS();applyFilters();showToast('Cleared','info');}}
 function saveLS(){try{localStorage.setItem('signalHistory',JSON.stringify(allH.slice(-5000)));}catch(e){console.error(e);}}
 
