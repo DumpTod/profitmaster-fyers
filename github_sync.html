@@ -52,7 +52,7 @@ function getTrades(){
   try {
     var raw = localStorage.getItem('signalHistory');
     if(!raw) return [];
-    return JSON.parse(raw).filter(function(s){ return s.scanner_type === 'atr_trailing'; });
+    return JSON.parse(raw);
   } catch(e){ return []; }
 }
 
