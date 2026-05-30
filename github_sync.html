@@ -52,7 +52,9 @@ function getTrades(){
   try {
     var raw = localStorage.getItem('signalHistory');
     if(!raw) return [];
-    return JSON.parse(raw);
+    return JSON.parse(raw).filter(function(s){ 
+      return s.symbol === 'NIFTY' || s.symbol === 'BANKNIFTY'; 
+    });
   } catch(e){ return []; }
 }
 
