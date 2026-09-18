@@ -566,7 +566,7 @@ def fetch_candles(instrument_key, interval='1minute', days=90, retry_on_fail=Tru
     }
 
             try:
-        response = fyers.history(data=data)
+                response = fyers.history(data=data)
 
         if response.get('s') != 'ok':
             if retry_on_fail and 'unauthorized' in str(response.get('message', '')).lower():
