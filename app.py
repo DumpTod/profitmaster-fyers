@@ -543,7 +543,7 @@ def calculate_atr_trailing(df, fast_period, fast_mult, slow_period, slow_mult):
 # DATA FETCHING FUNCTIONS
 # ========================================
 
-def fetch_candles(instrument_key, interval='1minute', days=90, retry_on_fail=True):
+def fetch_candles(instrument_key, interval='1minute', days=5, retry_on_fail=True):
     fyers = init_fyers()
     if not fyers:
         return pd.DataFrame()
@@ -565,8 +565,21 @@ def fetch_candles(instrument_key, interval='1minute', days=90, retry_on_fail=Tru
         'cont_flag': '1'
     }
 
-    try:
-        response = fyers.history(data=data)
+        try:
+        # Run fyers.history with a hard timeout so a slow API doesn't lock the scanner
+        _resp_holder = []
+        def _do_fetch():
+            try:
+                _resp_holder.append(fyers.history(data=data))
+            except Exception as _e:
+                _resp_holder.append({'s': 'error', 'message': str(_e)})
+        _t = threading.Thread(target=_do_fetch, daemon=True)
+        _t.start()
+        _t.join(timeout=20)
+        if _t.is_alive():
+            print(f"[fetch_candles] TIMEOUT after 20s for {instrument_key} ({interval}, {days}d)")
+            return pd.DataFrame()
+        response = _resp_holder[0] if _resp_holder else {'s': 'error', 'message': 'no response'}
 
         if response.get('s') != 'ok':
             if retry_on_fail and 'unauthorized' in str(response.get('message', '')).lower():
@@ -638,7 +651,7 @@ def generate_signals():
         try:
             print(f"\nScanning {symbol}...")
 
-            df_1m = fetch_candles(config['instrument_key'], '1minute', days=90)
+            df_1m = fetch_candles(config['instrument_key'], '1minute', days=5)
 
             if len(df_1m) < 50:
                 print(f"Insufficient candles: {len(df_1m)}")
@@ -880,7 +893,7 @@ def background_scanner():
         except Exception as e:
             print(f"[BG] Error in background scanner: {e}")
 
-        time.sleep(30)
+        time.sleep(15)
 
 
 # ========================================
